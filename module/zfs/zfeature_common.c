@@ -253,4 +253,15 @@ zpool_feature_init(void)
 	    "Variable on-disk size of dnodes.",
 	    ZFEATURE_FLAG_PER_DATASET, large_dnode_deps);
 	}
+
+	static spa_feature_t hole_birth_fix_deps[] = {
+	        SPA_FEATURE_HOLE_BIRTH,
+		SPA_FEATURE_ENABLED_TXG,
+		SPA_FEATURE_NONE
+	};
+	zfeature_register(SPA_FEATURE_HOLE_BIRTH_FIX,
+	    "org.open-zfs:hole_birth_fix", "hole_birth_fix",
+	    "Detect when hole_birth became trustworthy",
+	    ZFEATURE_FLAG_MOS | ZFEATURE_FLAG_ACTIVATE_ON_ENABLE,
+	    hole_birth_fix_deps);
 }

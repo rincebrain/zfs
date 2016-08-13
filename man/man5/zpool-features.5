@@ -386,6 +386,32 @@ never return to being \fBenabled\fB.
 .sp
 .ne 2
 .na
+\fB\fBhole_birth_fix\fR\fR
+.ad
+.RS 4n
+.TS
+l l .
+GUID	org.open-zfs:hole_birth_fix
+READ\-ONLY COMPATIBLE	yes
+DEPENDENCIES	enabled_txg,hole_birth
+.TE
+
+The \fBhole_birth_fix\fR feature exists to mark a txg beyond which
+several bugs in the \fRhole_birth\fR code were fixed, such that workarounds
+are no longer required.
+
+When this feature is \fBenabled\fR, zfs send will utilize the hole_birth
+metadata for all transactions written after that point. Since this does not
+permute the on-disk format, we can permit read-only imports on older systems.
+
+This feature becomes \fBactive\fR as soon as it is enabled and will
+never return to being \fBenabled\fR.
+
+.RE
+
+.sp
+.ne 2
+.na
 \fB\fBembedded_data\fR\fR
 .ad
 .RS 4n

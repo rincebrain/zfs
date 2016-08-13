@@ -63,6 +63,7 @@ typedef struct traverse_data {
 	blkptr_cb_t *td_func;
 	void *td_arg;
 	boolean_t td_realloc_possible;
+	uint64_t td_hole_birth_fix_txg;
 } traverse_data_t;
 
 static int traverse_dnode(traverse_data_t *td, const dnode_phys_t *dnp,
@@ -228,7 +229,8 @@ traverse_visitbp(traverse_data_t *td, const dnode_phys_t *dnp,
 		ASSERT(0);
 	}
 
-	if (bp->blk_birth == 0) {
+	if (bp->blk_birth == 0 &&
+            td->td_min_txg > td->td_hole_birth_fix_txg ) {
 		/*
 		 * Since this block has a birth time of 0 it must be one of
 		 * two things: a hole created before the
@@ -255,7 +257,8 @@ traverse_visitbp(traverse_data_t *td, const dnode_phys_t *dnp,
 			zb->zb_object == DMU_META_DNODE_OBJECT) &&
 			td->td_hole_birth_enabled_txg <= td->td_min_txg)
 			return (0);
-	} else if (bp->blk_birth <= td->td_min_txg) {
+	} else if (bp->blk_birth <= td->td_min_txg &&
+	           td->td_min_txg > td->td_hole_birth_fix_txg) {
 		return (0);
 	}
 
@@ -584,6 +587,12 @@ traverse_impl(spa_t *spa, dsl_dataset_t *ds, uint64_t objset, blkptr_t *rootbp,
 		    SPA_FEATURE_HOLE_BIRTH, &td->td_hole_birth_enabled_txg));
 	} else {
 		td->td_hole_birth_enabled_txg = UINT64_MAX;
+	}
+	if (spa_feature_is_active(spa, SPA_FEATURE_HOLE_BIRTH_FIX)) {
+		VERIFY(spa_feature_enabled_txg(spa,
+		    SPA_FEATURE_HOLE_BIRTH_FIX, &td->td_hole_birth_fix_txg));
+	} else {
+		td->td_hole_birth_fix_txg = UINT64_MAX;
 	}
 
 	pd->pd_flags = flags;
