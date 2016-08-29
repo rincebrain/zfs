@@ -47,7 +47,7 @@ verify_runnable "both"
 log_assert "hole_birth bug ZoL #4809 test"
 log_onexit cleanup_pool $POOL2
 
-test_fs_setup_4809 $POOL $POOL2
+test_fs_setup_4809_1 $POOL $POOL2
 
 sendfs=$POOL/sendfs
 recvfs=$POOL2/recvfs

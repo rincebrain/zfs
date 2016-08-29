@@ -313,14 +313,55 @@ function test_fs_setup_4809
 	if $($ZFS create -o recordsize=4k $sendfs); then
 		# initial create
 		log_must truncate -s 1G /$sendfs/file1
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=11264 seek=1152 oflag=fsync
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=11264 seek=1152
+		sleep 5
 
 		log_must $ZFS snapshot $sendfs@snap1
 
 		# permute
 		log_must truncate -s 4194304 /$sendfs/file1
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=152 seek=384 conv=notrunc oflag=fsync
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=10 seek=1408 conv=notrunc oflag=fsync
+ 		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=152 seek=384 conv=notrunc
+		sleep 5
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=10 seek=1408 conv=notrunc
+		sleep 5
+		
+		log_must $ZFS snapshot $sendfs@snap2
+		log_must eval "$ZFS send -v $sendfs@snap1 >/$sendpool/initial.zsend"
+		log_must eval "$ZFS send -v -i @snap1 $sendfs@snap2 " \
+		    ">/$sendpool/incremental.zsend"
+	fi
+
+}
+
+function test_fs_setup_4809_1
+{
+	sendpool=$1
+	recvpool=$2
+
+	sendfs=$sendpool/sendfs
+	recvfs=$recvpool/recvfs
+
+	if datasetexists $recvfs; then
+		log_must $ZFS destroy -r $recvfs
+	fi
+	if datasetexists $sendfs; then
+		log_must $ZFS destroy -r $sendfs
+	fi
+	if $($ZFS create -o recordsize=4k $sendfs); then
+		# initial create
+		log_must truncate -s 1G /$sendfs/file1
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=11264 seek=1152
+		# I've tried a number of workarounds, but none of them reliably work, so the sleeps stay.
+#		sleep 5
+
+		log_must $ZFS snapshot $sendfs@snap1
+
+		# permute
+		log_must truncate -s 4194304 /$sendfs/file1
+ 		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=152 seek=384 conv=notrunc
+#		sleep 5
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=10 seek=1408 conv=notrunc
+#		sleep 5
 		
 		log_must $ZFS snapshot $sendfs@snap2
 		log_must eval "$ZFS send -v $sendfs@snap1 >/$sendpool/initial.zsend"
@@ -352,13 +393,16 @@ function test_fs_setup_4996
 	fi
 	if $($ZFS create -o recordsize=512 $sendfs); then
 		# initial create
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1 seek=1 oflag=fsync
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1 seek=1
+		sleep 5
 
 		log_must $ZFS snapshot $sendfs@snap1
 
 		# permute
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1 oflag=fsync
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1 seek=3 oflag=fsync
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1
+		sleep 5
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=128k count=1 seek=3
+		sleep 5
 		
 		log_must $ZFS snapshot $sendfs@snap2
 		log_must eval "$ZFS send -v $sendfs@snap1 >/$sendpool/initial.zsend"
@@ -391,14 +435,17 @@ function test_fs_setup_5030
 	if $($ZFS create -o recordsize=4k $sendfs); then
 		# initial create
 		log_must truncate -s 1G /$sendfs/file1
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=11264 seek=1152 oflag=fsync
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=11264 seek=1152
+		sleep 5
 
 		log_must $ZFS snapshot $sendfs@snap1
 
 		# permute
 		log_must truncate -s 4194304 /$sendfs/file1
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=152 seek=384 conv=notrunc oflag=fsync
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=10 seek=1408 conv=notrunc oflag=fsync
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=152 seek=384 conv=notrunc
+		sleep 5
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=4k count=10 seek=1408 conv=notrunc
+		sleep 5
 
 		
 		log_must $ZFS snapshot $sendfs@snap2
@@ -431,14 +478,19 @@ function test_fs_setup_7176
 	fi
 	if $($ZFS create -o recordsize=512 $sendfs); then
 		# initial create
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=512 count=128k oflag=fsync
-		log_must truncate --size=16k /$sendfs/file1
+		log_must truncate --size=300M /$sendfs/file1
+#		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=512 count=128k conv=notrunc
+#		sleep 5
 
 		log_must $ZFS snapshot $sendfs@snap1
 
+		log_must truncate --size=10M /$sendfs/file1
+		sleep 5
+
 		# permute
-		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=512 count=1 seek=96k conv=notrunc oflag=fsync
-		
+		log_must dd if=/dev/urandom of=/$sendfs/file1 bs=512 count=1 seek=96k conv=notrunc
+		sleep 5
+
 		log_must $ZFS snapshot $sendfs@snap2
 		log_must eval "$ZFS send -v $sendfs@snap1 >/$sendpool/initial.zsend"
 		log_must eval "$ZFS send -v -i @snap1 $sendfs@snap2 " \
