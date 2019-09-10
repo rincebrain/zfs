@@ -29,6 +29,7 @@
  * Copyright (c) 2019, Klara Inc.
  * Copyright (c) 2019, Allan Jude
  * Copyright (c) 2020, The FreeBSD Foundation [1]
+ * Copyright (c) 2021 by George Melikov. All rights reserved.
  *
  * [1] Portions of this software were developed by Allan Jude
  *     under sponsorship from the FreeBSD Foundation.
@@ -1793,7 +1794,7 @@ arc_hdr_authenticate(arc_buf_hdr_t *hdr, spa_t *spa, uint64_t dsobj)
 		abd = abd_get_from_buf(tmpbuf, lsize);
 		abd_take_ownership_of_buf(abd, B_TRUE);
 		csize = zio_compress_data(HDR_GET_COMPRESS(hdr),
-		    hdr->b_l1hdr.b_pabd, tmpbuf, lsize, hdr->b_complevel);
+		    hdr->b_l1hdr.b_pabd, tmpbuf, lsize, hdr->b_complevel, 0);
 		ASSERT3U(csize, <=, psize);
 		abd_zero_off(abd, csize, psize - csize);
 	}
@@ -9341,7 +9342,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, uint64_t asize,
 		tmp = abd_borrow_buf(cabd, asize);
 
 		psize = zio_compress_data(compress, to_write, tmp, size,
-		    hdr->b_complevel);
+		    hdr->b_complevel, 0);
 
 		if (psize >= size) {
 			abd_return_buf(cabd, tmp, asize);
@@ -9352,6 +9353,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, uint64_t asize,
 				abd_zero_off(to_write, size, asize - size);
 			goto encrypt;
 		}
+
 		ASSERT3U(psize, <=, HDR_GET_PSIZE(hdr));
 		if (psize < asize)
 			memset((char *)tmp + psize, 0, asize - psize);
@@ -10828,7 +10830,8 @@ l2arc_log_blk_commit(l2arc_dev_t *dev, zio_t *pio, l2arc_write_callback_t *cb)
 
 	/* try to compress the buffer */
 	psize = zio_compress_data(ZIO_COMPRESS_LZ4,
-	    abd_buf->abd, tmpbuf, sizeof (*lb), 0);
+	    abd_buf->abd, tmpbuf, sizeof (*lb), 0,
+	    1 << dev->l2ad_vdev->vdev_ashift);
 
 	/* a log block is never entirely zero */
 	ASSERT(psize != 0);
