@@ -1828,7 +1828,8 @@ class ZFSTest(unittest.TestCase):
 
         with self.assertRaises(lzc_exc.StreamIOError) as ctx:
             lzc.lzc_send(snap, None, bad_fd)
-        self.assertEqual(ctx.exception.errno, errno.EBADF)
+        self.assertTrue(ctx.exception.errno == errno.EBADF or
+                        ctx.exception.errno == errno.EPIPE)
 
     def test_send_bad_fd_2(self):
         snap = ZFSTest.pool.makeName(b"fs1@snap")

@@ -150,6 +150,12 @@ _LIBZFS_CORE_H int lzc_get_bootenv(const char *, nvlist_t **);
 _LIBZFS_CORE_H int lzc_get_vdev_prop(const char *, nvlist_t *, nvlist_t **);
 _LIBZFS_CORE_H int lzc_set_vdev_prop(const char *, nvlist_t *, nvlist_t **);
 
+int lzc_set_bootenv(const char *, const nvlist_t *);
+int lzc_get_bootenv(const char *, nvlist_t **);
+
+unsigned long lzc_get_pipe_max(void);
+void lzc_set_pipe_max(int infd);
+
 #ifdef	__cplusplus
 }
 #endif
