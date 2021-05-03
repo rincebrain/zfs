@@ -728,6 +728,18 @@ finish_progress(char *done)
 }
 
 static int
+is_dev_fs(int fd) 
+{ 
+	int nfd = open("/dev/null", O_WRONLY); 
+	struct stat st, nst; 
+	fstat(fd, &st); 
+	fstat(nfd, &nst); 
+	int res = st.st_dev == nst.st_dev; 
+	close(nfd); 
+	return res; 
+}
+
+static int
 zfs_mount_and_share(libzfs_handle_t *hdl, const char *dataset, zfs_type_t type)
 {
 	zfs_handle_t *zhp = NULL;
@@ -4563,7 +4575,13 @@ zfs_do_send(int argc, char **argv)
 		    "You must redirect standard output.\n"));
 		return (1);
 	}
-
+#ifdef __linux__
+	if (is_dev_fs(STDOUT_FILENO)) {
+		(void) fprintf(stderr,
+		    gettext("Error: Stream cannot be written to /dev/ files.\n"));
+		return (1);
+	}
+#endif
 	if (flags.saved) {
 		zhp = zfs_open(g_zfs, argv[0], ZFS_TYPE_DATASET);
 		if (zhp == NULL)
