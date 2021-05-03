@@ -26,6 +26,7 @@
  * Copyright 2017 RackTop Systems.
  * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
  * Copyright (c) 2019, 2020 by Christian Schwarz. All rights reserved.
+ * Copyright (c) 2021 Rich Ercolani.
  */
 
 /*
@@ -645,6 +646,58 @@ lzc_send_resume(const char *snapname, const char *from, int fd,
 	    resumeoff, NULL));
 }
 
+struct sendargs {
+	int ioctlfd;
+	int inputfd;
+	int outputfd;
+};
+typedef struct sendargs sendargs_t;
+
+void *
+__do_send_output(void *voidargs)
+{
+	sendargs_t *args = (sendargs_t *)voidargs;
+	sigset_t sigs;
+	int buflen = 131072;
+
+	// see the comment above the close() calls for why
+	// we can't just die from SIGPIPE
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGPIPE);
+	pthread_sigmask(SIG_BLOCK, &sigs, NULL);
+
+#ifndef __linux__
+	void* buf = calloc(1, buflen);
+#endif
+
+	int err = 0;
+	while (err >= 0) {
+#ifdef __linux__
+		err = splice(args->inputfd, 0, args->outputfd, 0, buflen,
+		    SPLICE_F_MORE);
+#else
+		err = read(args->inputfd, buf, buflen);
+		if (err <= 0) {
+			break;
+		}
+		err = write(args->outputfd, buf, err);
+#endif
+		if (err <= 0) {
+			break;
+		}
+	}
+	if (err < 0) {
+		// If we just call exit here, the other thread often blocks
+		// indefinitely on the ioctl completing, which won't happen
+		// because we stopped consuming the data. So we close the pipe
+		// here, and the other thread exits in a timely fashion.
+		close(args->ioctlfd);
+		close(args->inputfd);
+		exit(1);
+	}
+	return ((void *)(uintptr_t)err);
+}
+
 /*
  * snapname: The name of the "tosnap", or the snapshot whose contents we are
  * sending.
@@ -664,9 +717,18 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 {
 	nvlist_t *args;
 	int err;
+	int pipefd[2];
+	pthread_t mythread;
+	pthread_attr_t myattr;
+	sendargs_t sendargs;
+	uintptr_t dumbstatus;
+
+
+	err = pipe(pipefd);
+	err = pthread_attr_init(&myattr);
 
 	args = fnvlist_alloc();
-	fnvlist_add_int32(args, "fd", fd);
+	fnvlist_add_int32(args, "fd", pipefd[1]);
 	if (from != NULL)
 		fnvlist_add_string(args, "fromsnap", from);
 	if (flags & LZC_SEND_FLAG_LARGE_BLOCK)
@@ -686,7 +748,20 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	if (redactbook != NULL)
 		fnvlist_add_string(args, "redactbook", redactbook);
 
+	sendargs.inputfd = pipefd[0];
+	sendargs.outputfd = fd;
+	sendargs.ioctlfd = pipefd[1];
+
+	pthread_create(&mythread, &myattr, __do_send_output, (void *)&sendargs);
+
 	err = lzc_ioctl(ZFS_IOC_SEND_NEW, snapname, args, NULL);
+
+	close(pipefd[1]);
+
+	pthread_join(mythread, (void *)&dumbstatus);
+
+	pthread_attr_destroy(&myattr);
+
 	nvlist_free(args);
 	return (err);
 }
