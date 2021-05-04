@@ -693,7 +693,7 @@ __do_send_output(void *voidargs)
 		// here, and the other thread exits in a timely fashion.
 		close(args->ioctlfd);
 		close(args->inputfd);
-		exit(1);
+		err = errno;
 	}
 	return ((void *)(uintptr_t)err);
 }
@@ -721,7 +721,7 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	pthread_t mythread;
 	pthread_attr_t myattr;
 	sendargs_t sendargs;
-	uintptr_t dumbstatus;
+	int dumbstatus;
 
 
 	err = pipe(pipefd);
@@ -763,6 +763,10 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	pthread_attr_destroy(&myattr);
 
 	nvlist_free(args);
+
+	if (dumbstatus != 0) {
+		err = dumbstatus;
+	}
 	return (err);
 }
 
