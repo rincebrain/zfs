@@ -670,10 +670,10 @@ __do_send_output(void *voidargs)
 	void* buf = calloc(1, buflen);
 #endif
 
-	int err = 0;
-	while (err >= 0) {
+	int err = 1;
+	while (err > 0) {
 #ifdef __linux__
-		err = splice(args->inputfd, 0, args->outputfd, 0, buflen,
+		err = splice(args->inputfd, NULL, args->outputfd, NULL, buflen,
 		    SPLICE_F_MORE);
 #else
 		err = read(args->inputfd, buf, buflen);
@@ -682,19 +682,18 @@ __do_send_output(void *voidargs)
 		}
 		err = write(args->outputfd, buf, err);
 #endif
-		if (err <= 0) {
-			break;
-		}
 	}
+#ifndef __linux__
+	free(buf);
+#endif
 	if (err < 0) {
 		// If we just call exit here, the other thread often blocks
 		// indefinitely on the ioctl completing, which won't happen
 		// because we stopped consuming the data. So we close the pipe
 		// here, and the other thread exits in a timely fashion.
-		close(args->ioctlfd);
-		close(args->inputfd);
 		err = errno;
 	}
+	close(args->inputfd);
 	return ((void *)(uintptr_t)err);
 }
 
@@ -719,13 +718,11 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	int err;
 	int pipefd[2];
 	pthread_t mythread;
-	pthread_attr_t myattr;
 	sendargs_t sendargs;
 	int dumbstatus;
 
 
-	err = pipe(pipefd);
-	err = pthread_attr_init(&myattr);
+	err = pipe2(pipefd, O_CLOEXEC);
 
 	args = fnvlist_alloc();
 	fnvlist_add_int32(args, "fd", pipefd[1]);
@@ -752,15 +749,13 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	sendargs.outputfd = fd;
 	sendargs.ioctlfd = pipefd[1];
 
-	pthread_create(&mythread, &myattr, __do_send_output, (void *)&sendargs);
+	pthread_create(&mythread, NULL, __do_send_output, (void *)&sendargs);
 
 	err = lzc_ioctl(ZFS_IOC_SEND_NEW, snapname, args, NULL);
 
 	close(pipefd[1]);
 
 	pthread_join(mythread, (void *)&dumbstatus);
-
-	pthread_attr_destroy(&myattr);
 
 	nvlist_free(args);
 
