@@ -764,9 +764,17 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 
 	nvlist_free(args);
 
-	if (dumbstatus != 0) {
-		err = dumbstatus;
+
+	// it seems that, in the cases where the thread gets EBADF,
+	// the original codepath returned no errors. So we'll do
+	// that too.
+	if (dumbstatus != 0 && dumbstatus != EBADF) {
+		err = 1;
+		// this seems really rude but what're ya gonna do
+		errno = dumbstatus;
 	}
+
+
 	return (err);
 }
 
