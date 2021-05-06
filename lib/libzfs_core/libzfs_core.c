@@ -646,6 +646,28 @@ lzc_send_resume(const char *snapname, const char *from, int fd,
 	    resumeoff, NULL));
 }
 
+void
+lzc_set_pipe_max(int infd)
+{
+#ifdef __linux__
+	FILE *procf = fopen("/proc/sys/fs/pipe-max-size", "re");
+
+	if (procf != NULL) {
+		unsigned long max_psize;
+		long cur_psize;
+		if (fscanf(procf, "%lu", &max_psize) > 0) {
+			cur_psize = fcntl(infd, F_GETPIPE_SZ);
+			if (cur_psize > 0 &&
+			    max_psize > (unsigned long) cur_psize)
+				fcntl(infd, F_SETPIPE_SZ,
+				    max_psize);
+		}
+		fclose(procf);
+	}
+#endif
+}
+
+
 struct sendargs {
 	int ioctlfd;
 	int inputfd;
@@ -723,6 +745,8 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 
 
 	err = pipe2(pipefd, O_CLOEXEC);
+
+	lzc_set_pipe_max(pipefd[0]);
 
 	args = fnvlist_alloc();
 	fnvlist_add_int32(args, "fd", pipefd[1]);

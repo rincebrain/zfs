@@ -139,6 +139,17 @@ int lzc_set_bootenv(const char *, const nvlist_t *);
 int lzc_get_bootenv(const char *, nvlist_t **);
 
 void* __do_send_output(void* voidargs);
+#ifdef __linux__
+#ifndef F_SETPIPE_SZ
+#define	F_SETPIPE_SZ (F_SETLEASE + 7)
+#endif /* F_SETPIPE_SZ */
+
+#ifndef F_GETPIPE_SZ
+#define	F_GETPIPE_SZ (F_GETLEASE + 7)
+#endif /* F_GETPIPE_SZ */
+#endif
+
+void lzc_set_pipe_max(int infd);
 
 #ifdef	__cplusplus
 }

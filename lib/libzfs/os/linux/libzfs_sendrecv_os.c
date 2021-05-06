@@ -24,29 +24,9 @@
 
 #include "libzfs_impl.h"
 
-#ifndef F_SETPIPE_SZ
-#define	F_SETPIPE_SZ (F_SETLEASE + 7)
-#endif /* F_SETPIPE_SZ */
-
-#ifndef F_GETPIPE_SZ
-#define	F_GETPIPE_SZ (F_GETLEASE + 7)
-#endif /* F_GETPIPE_SZ */
 
 void
 libzfs_set_pipe_max(int infd)
 {
-	FILE *procf = fopen("/proc/sys/fs/pipe-max-size", "re");
-
-	if (procf != NULL) {
-		unsigned long max_psize;
-		long cur_psize;
-		if (fscanf(procf, "%lu", &max_psize) > 0) {
-			cur_psize = fcntl(infd, F_GETPIPE_SZ);
-			if (cur_psize > 0 &&
-			    max_psize > (unsigned long) cur_psize)
-				fcntl(infd, F_SETPIPE_SZ,
-				    max_psize);
-		}
-		fclose(procf);
-	}
+	lzc_set_pipe_max(infd);
 }
