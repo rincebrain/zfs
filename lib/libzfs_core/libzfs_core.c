@@ -709,12 +709,12 @@ __do_send_output(void *voidargs)
 	free(buf);
 #endif
 	if (err < 0) {
-		// If we just call exit here, the other thread often blocks
-		// indefinitely on the ioctl completing, which won't happen
-		// because we stopped consuming the data. So we close the pipe
-		// here, and the other thread exits in a timely fashion.
 		err = errno;
 	}
+	// If we just return here, the other thread often blocks
+	// indefinitely on the ioctl completing, which won't happen
+	// because we stopped consuming the data. So we close the pipe
+	// here, and the other thread exits in a timely fashion.
 	close(args->inputfd);
 	return ((void *)(uintptr_t)err);
 }
