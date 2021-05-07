@@ -789,6 +789,8 @@ lzc_send_resume_redacted(const char *snapname, const char *from, int fd,
 	// that too.
 	if (dumbstatus != 0) {
 		err = dumbstatus;
+		// this seems really rude but what're ya gonna do
+		errno = dumbstatus;
 	}
 
 
