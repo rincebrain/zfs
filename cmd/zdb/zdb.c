@@ -2211,6 +2211,7 @@ snprintf_zstd_header(spa_t *spa, char *blkbuf, size_t buflen,
 	zio_t *zio;
 	zfs_zstdhdr_t zstd_hdr;
 	int error;
+	uint32_t raw_ver;
 
 	if (BP_GET_COMPRESS(bp) != ZIO_COMPRESS_ZSTD)
 		return;
@@ -2228,11 +2229,12 @@ snprintf_zstd_header(spa_t *spa, char *blkbuf, size_t buflen,
 		memcpy(&zstd_hdr, buf, sizeof (zstd_hdr));
 		free(buf);
 		zstd_hdr.c_len = BE_32(zstd_hdr.c_len);
+		raw_ver = zstd_hdr.raw_version_level;
 		zstd_hdr.raw_version_level = BE_32(zstd_hdr.raw_version_level);
 		(void) snprintf(blkbuf + strlen(blkbuf),
 		    buflen - strlen(blkbuf),
-		    " ZSTD:size=%u:version=%u:level=%u:EMBEDDED",
-		    zstd_hdr.c_len, zstd_hdr.version, zstd_hdr.level);
+		    " ZSTD:size=%u:version=%x:level=%x:raw=%x:adj=%x:EMBEDDED",
+		    zstd_hdr.c_len, zstd_hdr.version, zstd_hdr.level,raw_ver, zstd_hdr.raw_version_level);
 		return;
 	}
 
@@ -2250,13 +2252,14 @@ snprintf_zstd_header(spa_t *spa, char *blkbuf, size_t buflen,
 	}
 	buf = abd_borrow_buf_copy(pabd, BP_GET_LSIZE(bp));
 	memcpy(&zstd_hdr, buf, sizeof (zstd_hdr));
+	raw_ver = zstd_hdr.raw_version_level;
 	zstd_hdr.c_len = BE_32(zstd_hdr.c_len);
 	zstd_hdr.raw_version_level = BE_32(zstd_hdr.raw_version_level);
 
 	(void) snprintf(blkbuf + strlen(blkbuf),
 	    buflen - strlen(blkbuf),
-	    " ZSTD:size=%u:version=%u:level=%u:NORMAL",
-	    zstd_hdr.c_len, zstd_hdr.version, zstd_hdr.level);
+	    " ZSTD:size=%u:version=%x:level=%x:raw=%x:adj=%x:NORMAL",
+	    zstd_hdr.c_len, zstd_hdr.version, zstd_hdr.level, raw_ver, zstd_hdr.raw_version_level);
 
 	abd_return_buf_copy(pabd, buf, BP_GET_LSIZE(bp));
 }
