@@ -47,11 +47,9 @@ jobs:
         # run for 20 minutes to have a total runner time of 30 minutes
         sudo /usr/share/zfs/zloop.sh -Z -t 1200 -l -m1
     - name: Prepare artifacts
-      if: failure()
       run: |
         sudo chmod +r -R $TEST_DIR/
     - uses: actions/upload-artifact@v2
-      if: failure()
       with:
         name: Logs
         path: |
@@ -59,7 +57,6 @@ jobs:
           !/var/tmp/zloop/*/vdev/
         if-no-files-found: ignore
     - uses: actions/upload-artifact@v2
-      if: failure()
       with:
         name: Pool files
         path: |
