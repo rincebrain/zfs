@@ -56,6 +56,7 @@ function usage
 	    "    -m  Max number of core dumps to allow before exiting.\n" \
 	    "    -l  Create 'ztest.core.N' symlink to core directory.\n" \
 	    "    -h  Print this help message.\n" \
+	    "	 -Z  Run ztest under valgrind\n" \
 	    "" >&2
 }
 
@@ -185,13 +186,15 @@ timeout=0
 size="512m"
 coremax=0
 symlink=0
-while getopts ":ht:m:s:c:f:l" opt; do
+valgrind=0
+while getopts ":ht:m:s:c:f:lZ" opt; do
 	case $opt in
 		t ) [[ $OPTARG -gt 0 ]] && timeout=$OPTARG ;;
 		m ) [[ $OPTARG -gt 0 ]] && coremax=$OPTARG ;;
 		s ) [[ $OPTARG ]] && size=$OPTARG ;;
 		c ) [[ $OPTARG ]] && coredir=$OPTARG ;;
 		f ) [[ $OPTARG ]] && basedir=$(readlink -f "$OPTARG") ;;
+		Z ) valgrind=1 ;;
 		l ) symlink=1 ;;
 		h ) usage
 		    exit 2
@@ -234,8 +237,10 @@ foundcrashes=0	# number of crashes found so far
 starttime=$(date +%s)
 curtime=$starttime
 
+RUN=0
 # if no timeout was specified, loop forever.
 while [[ $timeout -eq 0 ]] || [[ $curtime -le $((starttime + timeout)) ]]; do
+	RUN=$(($RUN + 1))
 	zopt="-G -VVVVV"
 
 	# start each run with an empty directory
@@ -302,7 +307,12 @@ while [[ $timeout -eq 0 ]] || [[ $curtime -le $((starttime + timeout)) ]]; do
 	zopt="$zopt -s $size"
 	zopt="$zopt -f $workdir"
 
+	VALGRIND="valgrind --log-file=${DEFAULTCOREDIR}/valgrind.$RUN"
+
 	cmd="$ZTEST $zopt $*"
+	if [[ $valgrind -eq 1 ]]; then
+		cmd="$VALGRIND $cmd"
+	fi
 	desc="$(date '+%m/%d %T') $cmd"
 	echo "$desc" | tee -a ztest.history
 	echo "$desc" >>ztest.out
