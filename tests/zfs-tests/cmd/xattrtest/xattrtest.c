@@ -257,7 +257,7 @@ drop_caches(void)
 }
 
 static int
-run_process(const char *path, char *argv[])
+run_process(const char *rpath, char *argv[])
 {
 	pid_t pid;
 	int rc, devnull_fd;
@@ -273,7 +273,7 @@ run_process(const char *path, char *argv[])
 		(void) dup2(devnull_fd, STDERR_FILENO);
 		close(devnull_fd);
 
-		(void) execvp(path, argv);
+		(void) execvp(rpath, argv);
 		_exit(-1);
 	} else if (pid > 0) {
 		int status;
@@ -291,9 +291,9 @@ run_process(const char *path, char *argv[])
 }
 
 static int
-post_hook(char *phase)
+post_hook(char *myphase)
 {
-	char *argv[3] = { script, phase, (char *)0 };
+	char *argv[3] = { script, myphase, (char *)0 };
 	int rc;
 
 	if (synccaches)
