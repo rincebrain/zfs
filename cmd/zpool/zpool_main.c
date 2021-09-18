@@ -904,7 +904,7 @@ zpool_do_add(int argc, char **argv)
 	boolean_t force = B_FALSE;
 	boolean_t dryrun = B_FALSE;
 	int name_flags = 0;
-	int c;
+	int ch;
 	nvlist_t *nvroot;
 	char *poolname;
 	int ret;
@@ -914,8 +914,8 @@ zpool_do_add(int argc, char **argv)
 	char *propval;
 
 	/* check options */
-	while ((c = getopt(argc, argv, "fgLno:P")) != -1) {
-		switch (c) {
+	while ((ch = getopt(argc, argv, "fgLno:P")) != -1) {
+		switch (ch) {
 		case 'f':
 			force = B_TRUE;
 			break;
@@ -1720,7 +1720,6 @@ zpool_do_create(int argc, char **argv)
 		 */
 		for (spa_feature_t i = 0; i < SPA_FEATURES; i++) {
 			char propname[MAXPATHLEN];
-			char *propval;
 			zfeature_info_t *feat = &spa_feature_table[i];
 
 			(void) snprintf(propname, sizeof (propname),
@@ -3707,8 +3706,6 @@ zpool_do_import(int argc, char **argv)
 	 *	-D	Above options applies only to destroyed pools.
 	 */
 	if (argc != 0) {
-		char *endptr;
-
 		errno = 0;
 		searchguid = strtoull(argv[0], &endptr, 10);
 		if (errno != 0 || *endptr != '\0') {
@@ -9730,13 +9727,13 @@ zpool_do_events_nvprint(nvlist_t *nvl, int depth)
 			}
 
 		case DATA_TYPE_STRING_ARRAY: {
-			char **str;
+			char **nstr;
 			uint_t i, nelem;
 
-			(void) nvpair_value_string_array(nvp, &str, &nelem);
+			(void) nvpair_value_string_array(nvp, &nstr, &nelem);
 			for (i = 0; i < nelem; i++)
 				printf(gettext("\"%s\" "),
-				    str[i] ? str[i] : "<NULL>");
+				    nstr[i] ? nstr[i] : "<NULL>");
 
 			break;
 			}
