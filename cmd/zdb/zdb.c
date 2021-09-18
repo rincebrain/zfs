@@ -4774,15 +4774,15 @@ dump_label(const char *dev)
 	 */
 	(void) strlcpy(path, dev, sizeof (path));
 	if (dev[0] != '/' && stat64(path, &statbuf) != 0) {
-		int error;
+		int err;
 
-		error = zfs_resolve_shortname(dev, path, MAXPATHLEN);
-		if (error == 0 && zfs_dev_is_whole_disk(path)) {
+		err = zfs_resolve_shortname(dev, path, MAXPATHLEN);
+		if (err == 0 && zfs_dev_is_whole_disk(path)) {
 			if (zfs_append_partition(path, MAXPATHLEN) == -1)
-				error = ENOENT;
+				err = ENOENT;
 		}
 
-		if (error || (stat64(path, &statbuf) != 0)) {
+		if (err || (stat64(path, &statbuf) != 0)) {
 			(void) printf("failed to find device %s, try "
 			    "specifying absolute path instead\n", dev);
 			return (1);
@@ -7640,30 +7640,30 @@ dump_zpool(spa_t *spa)
 		dump_objset(dp->dp_meta_objset);
 
 		if (dump_opt['d'] >= 3) {
-			dsl_pool_t *dp = spa->spa_dsl_pool;
+			dsl_pool_t *spa_dp = spa->spa_dsl_pool;
 			dump_full_bpobj(&spa->spa_deferred_bpobj,
 			    "Deferred frees", 0);
 			if (spa_version(spa) >= SPA_VERSION_DEADLISTS) {
-				dump_full_bpobj(&dp->dp_free_bpobj,
+				dump_full_bpobj(&spa_dp->dp_free_bpobj,
 				    "Pool snapshot frees", 0);
 			}
-			if (bpobj_is_open(&dp->dp_obsolete_bpobj)) {
+			if (bpobj_is_open(&spa_dp->dp_obsolete_bpobj)) {
 				ASSERT(spa_feature_is_enabled(spa,
 				    SPA_FEATURE_DEVICE_REMOVAL));
-				dump_full_bpobj(&dp->dp_obsolete_bpobj,
+				dump_full_bpobj(&spa_dp->dp_obsolete_bpobj,
 				    "Pool obsolete blocks", 0);
 			}
 
 			if (spa_feature_is_active(spa,
 			    SPA_FEATURE_ASYNC_DESTROY)) {
 				dump_bptree(spa->spa_meta_objset,
-				    dp->dp_bptree_obj,
+				    spa_dp->dp_bptree_obj,
 				    "Pool dataset frees");
 			}
 			dump_dtl(spa->spa_root_vdev, 0);
 		}
 
-		for (spa_feature_t f = 0; f < SPA_FEATURES; f++)
+		for (f = 0; f < SPA_FEATURES; f++)
 			global_feature_count[f] = UINT64_MAX;
 		global_feature_count[SPA_FEATURE_REDACTION_BOOKMARKS] = 0;
 		global_feature_count[SPA_FEATURE_BOOKMARK_WRITTEN] = 0;
