@@ -736,11 +736,11 @@ random_get_pseudo_bytes(uint8_t *ptr, size_t len)
 }
 
 int
-ddi_strtoul(const char *hw_serial, char **nptr, int base, unsigned long *result)
+ddi_strtoul(const char *myhw_serial, char **nptr, int base, unsigned long *result)
 {
 	char *end;
 
-	*result = strtoul(hw_serial, &end, base);
+	*result = strtoul(myhw_serial, &end, base);
 	if (*result == 0)
 		return (errno);
 	return (0);
