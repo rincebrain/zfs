@@ -3246,8 +3246,8 @@ dbuf_prefetch_indirect_done(zio_t *zio, const zbookmark_phys_t *zb,
 		ASSERT3U(nextblkid, ==, dpa->dpa_zb.zb_blkid);
 		dbuf_issue_final_prefetch(dpa, bp);
 	} else {
+		zbookmark_phys_t myzb;
 		arc_flags_t iter_aflags = ARC_FLAG_NOWAIT;
-		zbookmark_phys_t zb;
 
 		/* flag if L2ARC eligible, l2arc_noprefetch then decides */
 		if (dpa->dpa_aflags & ARC_FLAG_L2CACHE)
@@ -3255,13 +3255,13 @@ dbuf_prefetch_indirect_done(zio_t *zio, const zbookmark_phys_t *zb,
 
 		ASSERT3U(dpa->dpa_curlevel, ==, BP_GET_LEVEL(bp));
 
-		SET_BOOKMARK(&zb, dpa->dpa_zb.zb_objset,
+		SET_BOOKMARK(&myzb, dpa->dpa_zb.zb_objset,
 		    dpa->dpa_zb.zb_object, dpa->dpa_curlevel, nextblkid);
 
 		(void) arc_read(dpa->dpa_zio, dpa->dpa_spa,
 		    bp, dbuf_prefetch_indirect_done, dpa, dpa->dpa_prio,
 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE,
-		    &iter_aflags, &zb);
+		    &iter_aflags, &myzb);
 	}
 
 	arc_buf_destroy(abuf, private);
@@ -3325,7 +3325,6 @@ dbuf_prefetch_impl(dnode_t *dn, int64_t level, uint64_t blkid,
 	while (curlevel < nlevels - 1) {
 		int parent_level = curlevel + 1;
 		uint64_t parent_blkid = curblkid >> epbs;
-		dmu_buf_impl_t *db;
 
 		if (dbuf_hold_impl(dn, parent_level, parent_blkid,
 		    FALSE, TRUE, FTAG, &db) == 0) {
