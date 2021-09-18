@@ -1529,7 +1529,7 @@ vdev_raidz_io_start_write(zio_t *zio, raidz_row_t *rr, uint64_t ashift)
 
 	vdev_raidz_generate_parity_row(rm, rr);
 
-	for (int c = 0; c < rr->rr_cols; c++) {
+	for (c = 0; c < rr->rr_cols; c++) {
 		raidz_col_t *rc = &rr->rr_col[c];
 		if (rc->rc_size == 0)
 			continue;
