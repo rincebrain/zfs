@@ -1496,12 +1496,12 @@ estimate_size(zfs_handle_t *zhp, const char *from, int fd, sendflags_t *flags,
 		(void) pthread_join(ptid, &status);
 		int error = (int)(uintptr_t)status;
 		if (error != 0 && status != PTHREAD_CANCELED) {
-			char errbuf[1024];
-			(void) snprintf(errbuf, sizeof (errbuf),
+			char myerrbuf[1024];
+			(void) snprintf(myerrbuf, sizeof (myerrbuf),
 			    dgettext(TEXT_DOMAIN, "progress thread exited "
 			    "nonzero"));
 			return (zfs_standard_error(zhp->zfs_hdl, error,
-			    errbuf));
+			    myerrbuf));
 		}
 	}
 
@@ -1784,9 +1784,8 @@ zfs_send_resume_impl(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 			void *status = NULL;
 			(void) pthread_cancel(tid);
 			(void) pthread_join(tid, &status);
-			int error = (int)(uintptr_t)status;
+			error = (int)(uintptr_t)status;
 			if (error != 0 && status != PTHREAD_CANCELED) {
-				char errbuf[1024];
 				(void) snprintf(errbuf, sizeof (errbuf),
 				    dgettext(TEXT_DOMAIN,
 				    "progress thread exited nonzero"));
@@ -1794,7 +1793,6 @@ zfs_send_resume_impl(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
 			}
 		}
 
-		char errbuf[1024];
 		(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
 		    "warning: cannot send '%s'"), zhp->zfs_name);
 
@@ -2153,19 +2151,19 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 			err = EINVAL;
 			goto stderr_out;
 		}
-		zfs_handle_t *tosnap = zfs_open(zhp->zfs_hdl,
+		zfs_handle_t *tosnaphdl = zfs_open(zhp->zfs_hdl,
 		    full_tosnap_name, ZFS_TYPE_SNAPSHOT);
-		if (tosnap == NULL) {
+		if (tosnaphdl == NULL) {
 			err = -1;
 			goto err_out;
 		}
-		err = send_prelim_records(tosnap, fromsnap, outfd,
+		err = send_prelim_records(tosnaphdl, fromsnap, outfd,
 		    flags->replicate || flags->props || flags->holds,
 		    flags->replicate, flags->verbosity > 0, flags->dryrun,
 		    flags->raw, flags->replicate, flags->skipmissing,
 		    flags->backup, flags->holds, flags->props, flags->doall,
 		    &fss, &fsavl);
-		zfs_close(tosnap);
+		zfs_close(tosnaphdl);
 		if (err != 0)
 			goto err_out;
 	}
@@ -4707,18 +4705,18 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	}
 	if (err == 0 && snapholds_nvlist) {
 		nvpair_t *pair;
-		nvlist_t *holds, *errors = NULL;
+		nvlist_t *holds_nvlist, *errors = NULL;
 		int cleanup_fd = -1;
 
-		VERIFY(0 == nvlist_alloc(&holds, 0, KM_SLEEP));
+		VERIFY(0 == nvlist_alloc(&holds_nvlist, 0, KM_SLEEP));
 		for (pair = nvlist_next_nvpair(snapholds_nvlist, NULL);
 		    pair != NULL;
 		    pair = nvlist_next_nvpair(snapholds_nvlist, pair)) {
-			fnvlist_add_string(holds, destsnap, nvpair_name(pair));
+			fnvlist_add_string(holds_nvlist, destsnap, nvpair_name(pair));
 		}
-		(void) lzc_hold(holds, cleanup_fd, &errors);
+		(void) lzc_hold(holds_nvlist, cleanup_fd, &errors);
 		fnvlist_free(snapholds_nvlist);
-		fnvlist_free(holds);
+		fnvlist_free(holds_nvlist);
 	}
 
 	if (err && (ioctl_errno == ENOENT || ioctl_errno == EEXIST)) {
