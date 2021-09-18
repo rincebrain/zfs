@@ -86,7 +86,6 @@ crypto_get_ptrs(crypto_data_t *out, void **iov_or_mp, offset_t *current_offset,
 
 	case CRYPTO_DATA_UIO: {
 		zfs_uio_t *uio = out->cd_uio;
-		offset_t offset;
 		uint_t vec_idx;
 		uint8_t *p;
 		uint64_t iov_len;
