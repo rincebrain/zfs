@@ -1557,7 +1557,7 @@ zio_read_bp_init(zio_t *zio)
 	}
 
 	if (BP_IS_EMBEDDED(bp) && BPE_GET_ETYPE(bp) == BP_EMBEDDED_TYPE_DATA) {
-		int psize = BPE_GET_PSIZE(bp);
+		psize = BPE_GET_PSIZE(bp);
 		void *data = abd_borrow_buf(zio->io_abd, psize);
 
 		zio->io_pipeline = ZIO_INTERLOCK_PIPELINE;
