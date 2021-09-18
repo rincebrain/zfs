@@ -839,9 +839,9 @@ vdev_rebuild_thread(void *arg)
 			VERIFY0(space_map_load(msp->ms_sm,
 			    vr->vr_scan_tree, SM_ALLOC));
 
-			for (int i = 0; i < TXG_SIZE; i++) {
+			for (int j = 0; j < TXG_SIZE; j++) {
 				ASSERT0(range_tree_space(
-				    msp->ms_allocating[i]));
+				    msp->ms_allocating[j]));
 			}
 
 			range_tree_walk(msp->ms_unflushed_allocs,
