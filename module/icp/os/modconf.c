@@ -54,9 +54,9 @@ mod_null(struct modlmisc *modl, struct modlinkage *modlp)
  * Status for User modules.
  */
 static int
-mod_infonull(void *modl, struct modlinkage *modlp, int *p0)
+mod_infonull(void *modl, struct modlinkage *modlp, int *modp0)
 {
-	*p0 = -1;		/* for modinfo display */
+	*modp0 = -1;		/* for modinfo display */
 	return (0);
 }
 
