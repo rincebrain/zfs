@@ -701,7 +701,7 @@ all_pools_for_each_vdev_run_vcdl(vdev_cmd_data_list_t *vcdl)
 /*
  * Run command 'cmd' on all vdevs in all pools in argv.  Saves the first line of
  * output from the command in vcdk->data[].line for all vdevs.  If you want
- * to run the command on only certain vdevs, fill in g_zfs, vdev_names,
+ * to run the command on only certain vdevs, fill in myg_zfs, vdev_names,
  * vdev_names_count, and cb_name_flags.  Otherwise leave them as zero.
  *
  * Returns a vdev_cmd_data_list_t that must be freed with
@@ -709,7 +709,7 @@ all_pools_for_each_vdev_run_vcdl(vdev_cmd_data_list_t *vcdl)
  */
 vdev_cmd_data_list_t *
 all_pools_for_each_vdev_run(int argc, char **argv, char *cmd,
-    libzfs_handle_t *g_zfs, char **vdev_names, int vdev_names_count,
+    libzfs_handle_t *myg_zfs, char **vdev_names, int vdev_names_count,
     int cb_name_flags)
 {
 	vdev_cmd_data_list_t *vcdl;
@@ -719,7 +719,7 @@ all_pools_for_each_vdev_run(int argc, char **argv, char *cmd,
 	vcdl->vdev_names = vdev_names;
 	vcdl->vdev_names_count = vdev_names_count;
 	vcdl->cb_name_flags = cb_name_flags;
-	vcdl->g_zfs = g_zfs;
+	vcdl->g_zfs = myg_zfs;
 
 	/* Gather our list of all vdevs in all pools */
 	for_each_pool(argc, argv, B_TRUE, NULL, B_FALSE,
