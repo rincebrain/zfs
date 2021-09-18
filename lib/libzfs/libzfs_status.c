@@ -467,7 +467,6 @@ check_status(nvlist_t *config, boolean_t isimport,
 	 * (superfluous = beyond what's requested by 'compatibility')
 	 */
 	if (version >= SPA_VERSION_FEATURES) {
-		int i;
 		nvlist_t *feat;
 
 		if (isimport) {
