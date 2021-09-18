@@ -3431,7 +3431,7 @@ vdev_load(vdev_t *vd)
 	}
 
 	for (int c = 0; c < vd->vdev_children; c++) {
-		int error = vd->vdev_child[c]->vdev_load_error;
+		error = vd->vdev_child[c]->vdev_load_error;
 
 		if (error != 0)
 			return (error);
