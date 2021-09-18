@@ -792,7 +792,7 @@ dump_dnode(dmu_send_cookie_t *dscp, const blkptr_t *bp, uint64_t object,
 	    (dnp->dn_flags & DNODE_FLAG_SPILL_BLKPTR) &&
 	    (DN_SPILL_BLKPTR(dnp)->blk_birth <= dscp->dsc_fromtxg)) {
 		struct send_range record;
-		blkptr_t *bp = DN_SPILL_BLKPTR(dnp);
+		blkptr_t *mybp = DN_SPILL_BLKPTR(dnp);
 
 		bzero(&record, sizeof (struct send_range));
 		record.type = DATA;
@@ -800,9 +800,9 @@ dump_dnode(dmu_send_cookie_t *dscp, const blkptr_t *bp, uint64_t object,
 		record.eos_marker = B_FALSE;
 		record.start_blkid = DMU_SPILL_BLKID;
 		record.end_blkid = record.start_blkid + 1;
-		record.sru.data.bp = *bp;
+		record.sru.data.bp = *mybp;
 		record.sru.data.obj_type = dnp->dn_type;
-		record.sru.data.datablksz = BP_GET_LSIZE(bp);
+		record.sru.data.datablksz = BP_GET_LSIZE(mybp);
 
 		if (do_dump(dscp, &record) != 0)
 			return (SET_ERROR(EINTR));
