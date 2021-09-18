@@ -1754,7 +1754,6 @@ zfs_do_destroy(int argc, char **argv)
 		if (err != 0)
 			rv = 1;
 	} else if (pound != NULL) {
-		int err;
 		nvlist_t *nvl;
 
 		if (cb.cb_dryrun) {
@@ -8582,7 +8581,7 @@ zfs_do_wait(int argc, char **argv)
 		boolean_t missing = B_FALSE;
 		boolean_t any_waited = B_FALSE;
 
-		for (int i = 0; i < ZFS_WAIT_NUM_ACTIVITIES; i++) {
+		for (i = 0; i < ZFS_WAIT_NUM_ACTIVITIES; i++) {
 			boolean_t waited;
 
 			if (!enabled[i])
