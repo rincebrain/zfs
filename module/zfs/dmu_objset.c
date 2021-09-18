@@ -2642,7 +2642,6 @@ dmu_objset_find_dp_impl(dmu_objset_find_ctx_t *dcp)
 	 * Iterate over all snapshots.
 	 */
 	if (dcp->dc_flags & DS_FIND_SNAPSHOTS) {
-		dsl_dataset_t *ds;
 		err = dsl_dataset_hold_obj(dp, thisobj, FTAG, &ds);
 
 		if (err == 0) {
