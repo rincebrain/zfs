@@ -671,7 +671,7 @@ traverse_impl(spa_t *spa, dsl_dataset_t *ds, uint64_t objset, blkptr_t *rootbp,
 	/* See comment on ZIL traversal in dsl_scan_visitds. */
 	if (ds != NULL && !ds->ds_is_snapshot && !BP_IS_HOLE(rootbp)) {
 		enum zio_flag zio_flags = ZIO_FLAG_CANFAIL;
-		uint32_t flags = ARC_FLAG_WAIT;
+		uint32_t aflags = ARC_FLAG_WAIT;
 		objset_phys_t *osp;
 		arc_buf_t *buf;
 		ASSERT(!BP_IS_REDACTED(rootbp));
@@ -681,7 +681,7 @@ traverse_impl(spa_t *spa, dsl_dataset_t *ds, uint64_t objset, blkptr_t *rootbp,
 			zio_flags |= ZIO_FLAG_RAW;
 
 		err = arc_read(NULL, td->td_spa, rootbp, arc_getbuf_func,
-		    &buf, ZIO_PRIORITY_ASYNC_READ, zio_flags, &flags, czb);
+		    &buf, ZIO_PRIORITY_ASYNC_READ, zio_flags, &aflags, czb);
 		if (err != 0) {
 			/*
 			 * If both TRAVERSE_HARD and TRAVERSE_PRE are set,
