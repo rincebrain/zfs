@@ -907,7 +907,7 @@ zfs_btree_bulk_finish(zfs_btree_t *tree)
 	capacity = BTREE_CORE_ELEMS;
 	while (parent->btc_hdr.bth_parent != NULL) {
 		zfs_btree_core_t *cur = parent;
-		zfs_btree_hdr_t *hdr = &cur->btc_hdr;
+		hdr = &cur->btc_hdr;
 		parent = hdr->bth_parent;
 		/*
 		 * If the invariant isn't violated, move on to the next
