@@ -173,7 +173,7 @@ zpool_open_func(void *arg)
 		rdsk_node_t *slice;
 		avl_index_t where;
 		int timeout;
-		int error;
+		error = 0;
 
 		if (label_paths(rn->rn_hdl, rn->rn_config, &path, &devid))
 			return;
