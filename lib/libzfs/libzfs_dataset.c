@@ -1851,7 +1851,7 @@ zfs_prop_set_list(zfs_handle_t *zhp, nvlist_t *props)
 		nvlist_t *errorprops = NULL;
 		if (zcmd_read_dst_nvlist(hdl, &zc, &errorprops) != 0)
 			goto error;
-		for (nvpair_t *elem = nvlist_next_nvpair(errorprops, NULL);
+		for (elem = nvlist_next_nvpair(errorprops, NULL);
 		    elem != NULL;
 		    elem = nvlist_next_nvpair(errorprops, elem)) {
 			prop = zfs_name_to_prop(nvpair_name(elem));
