@@ -927,7 +927,8 @@ static int
 draid_verify(int argc, char *argv[])
 {
 	char filename[MAXPATHLEN];
-	int n = 0, c, error, verbose = 1;
+	int n = 0, error, verbose = 1;
+	uint_t c = 0;
 	int check_ratios = 0;
 
 	while ((c = getopt(argc, argv, ":rv")) != -1) {
@@ -996,7 +997,6 @@ draid_verify(int argc, char *argv[])
 		uint64_t nv_seed, nv_checksum, nv_children, nv_nperms;
 		uint8_t *nv_perms;
 		nvlist_t *cfg;
-		uint_t c;
 
 		error = read_map_key(filename, key, &cfg);
 		if (error != 0) {
