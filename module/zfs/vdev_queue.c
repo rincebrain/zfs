@@ -705,7 +705,7 @@ vdev_queue_aggregate(vdev_queue_t *vq, zio_t *zio)
 	 * worthwhile.
 	 */
 	if (zio->io_type == ZIO_TYPE_WRITE && mandatory != NULL) {
-		zio_t *nio = last;
+		nio = last;
 		while ((dio = AVL_NEXT(t, nio)) != NULL &&
 		    IO_GAP(nio, dio) == 0 &&
 		    IO_GAP(mandatory, dio) <= zfs_vdev_write_gap_limit) {
