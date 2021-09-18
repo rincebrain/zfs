@@ -776,13 +776,13 @@ nvlist_prt(nvlist_t *nvl, nvlist_prtctl_t pctl)
 }
 
 #define	NVPA(elem, type, vtype, ptype, format) { \
-	uint_t	i, count; \
+	uint_t	nvpi, nvpcount; \
 	vtype	*value;  \
 \
-	(void) nvpair_value_##type(elem, &value, &count); \
-	for (i = 0; i < count; i++) { \
+	(void) nvpair_value_##type(elem, &value, &nvpcount); \
+	for (nvpi = 0; nvpi < nvpcount; nvpi++) { \
 		(void) printf("%*s%s[%d]: " format "\n", indent, "", \
-		    nvpair_name(elem), i, (ptype)value[i]); \
+		    nvpair_name(elem), nvpi, (ptype)value[nvpi]); \
 	} \
 }
 
