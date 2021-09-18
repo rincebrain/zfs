@@ -829,7 +829,7 @@ zpool_expand_proplist(zpool_handle_t *zhp, zprop_list_t **plp,
 
 	if ((*plp)->pl_all && firstexpand) {
 		for (i = 0; i < SPA_FEATURES; i++) {
-			zprop_list_t *entry = zfs_alloc(hdl,
+			entry = zfs_alloc(hdl,
 			    sizeof (zprop_list_t));
 			entry->pl_prop = ZPROP_INVAL;
 			entry->pl_user_prop = zfs_asprintf(hdl, "feature@%s",
@@ -847,7 +847,6 @@ zpool_expand_proplist(zpool_handle_t *zhp, zprop_list_t **plp,
 	    nvp != NULL; nvp = nvlist_next_nvpair(features, nvp)) {
 		char *propname;
 		boolean_t found;
-		zprop_list_t *entry;
 
 		if (zfeature_is_supported(nvpair_name(nvp)))
 			continue;
@@ -1949,13 +1948,13 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 
 	if (props != NULL) {
 		uint64_t version;
-		prop_flags_t flags = { .create = B_FALSE, .import = B_TRUE };
+		prop_flags_t pflags = { .create = B_FALSE, .import = B_TRUE };
 
 		verify(nvlist_lookup_uint64(config, ZPOOL_CONFIG_VERSION,
 		    &version) == 0);
 
 		if ((props = zpool_valid_proplist(hdl, origname,
-		    props, version, flags, errbuf)) == NULL)
+		    props, version, pflags, errbuf)) == NULL)
 			return (-1);
 		if (zcmd_write_src_nvlist(hdl, &zc, props) != 0) {
 			nvlist_free(props);
@@ -2915,7 +2914,7 @@ vdev_get_physpaths(nvlist_t *nv, char *physpath, size_t phypath_size,
 	    (is_spare = (strcmp(type, VDEV_TYPE_SPARE) == 0))) {
 		nvlist_t **child;
 		uint_t count;
-		int i, ret;
+		int i;
 
 		if (nvlist_lookup_nvlist_array(nv,
 		    ZPOOL_CONFIG_CHILDREN, &child, &count) != 0)
@@ -3551,9 +3550,9 @@ zpool_vdev_split(zpool_handle_t *zhp, char *newname, nvlist_t **newroot,
 	verify(nvlist_lookup_uint64(config, ZPOOL_CONFIG_VERSION, &vers) == 0);
 
 	if (props) {
-		prop_flags_t flags = { .create = B_FALSE, .import = B_TRUE };
+		prop_flags_t pflags = { .create = B_FALSE, .import = B_TRUE };
 		if ((zc_props = zpool_valid_proplist(hdl, zhp->zpool_name,
-		    props, vers, flags, msg)) == NULL)
+		    props, vers, pflags, msg)) == NULL)
 			return (-1);
 		(void) nvlist_lookup_uint64(zc_props,
 		    zpool_prop_to_name(ZPOOL_PROP_READONLY), &readonly);
