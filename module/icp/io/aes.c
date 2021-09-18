@@ -895,8 +895,8 @@ aes_decrypt_final(crypto_ctx_t *ctx, crypto_data_t *data,
 		 * This is where all the plaintext is returned, make sure
 		 * the plaintext buffer is big enough
 		 */
-		gcm_ctx_t *ctx = (gcm_ctx_t *)aes_ctx;
-		size_t pt_len = ctx->gcm_processed_data_len - ctx->gcm_tag_len;
+		gcm_ctx_t *gcmctx = (gcm_ctx_t *)aes_ctx;
+		size_t pt_len = gcmctx->gcm_processed_data_len - gcmctx->gcm_tag_len;
 
 		if (data->cd_length < pt_len) {
 			data->cd_length = pt_len;
