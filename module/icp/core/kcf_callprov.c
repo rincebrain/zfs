@@ -1328,12 +1328,12 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 
 	optype = params->rp_optype;
 
+	crypto_ctx_t *mac_ctx;
 	switch (params->rp_opgrp) {
 	case KCF_OG_ENCRYPT_MAC: {
 		kcf_encrypt_mac_ops_params_t *cmops =
 		    &params->rp_u.encrypt_mac_params;
 		kcf_context_t *encr_kcf_ctx;
-		crypto_ctx_t *mac_ctx;
 		kcf_req_params_t encr_params;
 
 		encr_kcf_ctx = (kcf_context_t *)(ctx->cc_framework_private);
@@ -1373,7 +1373,7 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 			crypto_dual_data_t *ct = cmops->em_ciphertext;
 			crypto_data_t *pt = cmops->em_plaintext;
 			kcf_context_t *mac_kcf_ctx = encr_kcf_ctx->kc_secondctx;
-			crypto_ctx_t *mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
+			mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
 
 			KCF_WRAP_ENCRYPT_OPS_PARAMS(&encr_params, KCF_OP_UPDATE,
 			    pd->pd_sid, NULL, NULL, pt, (crypto_data_t *)ct,
@@ -1414,7 +1414,7 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 			crypto_dual_data_t *ct = cmops->em_ciphertext;
 			crypto_data_t *mac = cmops->em_mac;
 			kcf_context_t *mac_kcf_ctx = encr_kcf_ctx->kc_secondctx;
-			crypto_ctx_t *mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
+			mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
 			crypto_context_t mac_context = mac_ctx;
 
 			KCF_WRAP_ENCRYPT_OPS_PARAMS(&encr_params, KCF_OP_FINAL,
@@ -1463,7 +1463,6 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 		kcf_mac_decrypt_ops_params_t *mdops =
 		    &params->rp_u.mac_decrypt_params;
 		kcf_context_t *decr_kcf_ctx;
-		crypto_ctx_t *mac_ctx;
 		kcf_req_params_t decr_params;
 
 		decr_kcf_ctx = (kcf_context_t *)(ctx->cc_framework_private);
@@ -1509,7 +1508,7 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 			crypto_dual_data_t *ct = mdops->md_ciphertext;
 			crypto_data_t *pt = mdops->md_plaintext;
 			kcf_context_t *mac_kcf_ctx = decr_kcf_ctx->kc_secondctx;
-			crypto_ctx_t *mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
+			mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
 
 			err = crypto_mac_update((crypto_context_t)mac_ctx,
 			    (crypto_data_t *)ct, NULL);
@@ -1538,7 +1537,7 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 			crypto_data_t *pt = mdops->md_plaintext;
 			crypto_data_t *mac = mdops->md_mac;
 			kcf_context_t *mac_kcf_ctx = decr_kcf_ctx->kc_secondctx;
-			crypto_ctx_t *mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
+			mac_ctx = &mac_kcf_ctx->kc_glbl_ctx;
 
 			err = crypto_mac_final((crypto_context_t)mac_ctx,
 			    mac, NULL);
