@@ -7521,7 +7521,7 @@ ztest_run(ztest_shared_t *zs)
 	 * If we got any ENOSPC errors on the previous run, destroy something.
 	 */
 	if (zs->zs_enospc_count != 0) {
-		int d = ztest_random(ztest_opts.zo_datasets);
+		d = ztest_random(ztest_opts.zo_datasets);
 		ztest_dataset_destroy(d);
 	}
 	zs->zs_enospc_count = 0;
