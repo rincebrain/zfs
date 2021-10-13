@@ -300,6 +300,12 @@ This package contains a dracut module used to construct an initramfs
 image which is ZFS aware.
 
 %if %{with pyzfs}
+# Debian shipped bullseye without working Python rpm macros, so if
+# we want to reference the version later, we have to do it ourselves.
+%if "%{?__python}" != "" && ("%{python_version}" == "" || "%{python_version}" == "%%{python_version}")
+%define python_version %(echo `%{__python} -c "import sys; sys.stdout.write(sys.version[:3])"`)
+%endif
+
 %package -n python%{__python_pkg_version}-pyzfs
 Summary:        Python %{python_version} wrapper for libzfs_core
 Group:          Development/Languages/Python
