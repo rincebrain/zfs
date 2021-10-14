@@ -193,12 +193,15 @@ run_and_verify "zfs promote $fsclone"
 run_and_verify "zfs promote $volclone"
 run_and_verify "zfs destroy $newfs"
 run_and_verify "zfs destroy $newvol"
+zfs get all $fsclone
+zfs get clones $fsclone
 run_and_verify "zfs destroy -rf $fsclone"
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
 # stolen from zvol_misc
 #blockdev_missing "${ZVOL_DEVDIR}/$vol"
 zfs get all $volclone
+zfs get clones $volclone
 echo 512 > /sys/module/zfs/parameters/zfs_flags
 run_and_verify "zfs destroy -rf $volclone"
 
