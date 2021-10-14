@@ -57,6 +57,7 @@ log_assert "Reservation properties preserved across exports and imports"
 
 function cleanup
 {
+	is_linux && udev_wait
 	for obj in $OBJ_LIST; do
                 datasetexists $obj && log_must zfs destroy -f $obj
         done

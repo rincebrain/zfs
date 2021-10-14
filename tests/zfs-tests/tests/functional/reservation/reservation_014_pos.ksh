@@ -51,7 +51,7 @@ log_assert "Verify cannot set reservation larger than quota"
 
 function cleanup
 {
-	#
+	is_linux && udev_wait
 	# Note we don't destroy $TESTFS as it's used by other tests
 	for obj in $OBJ_LIST ; do
 		datasetexists $obj && log_must zfs destroy -f $obj
@@ -92,10 +92,12 @@ for obj in $TESTPOOL/$TESTFS $OBJ_LIST ; do
 	#
 	if [[ $obj == $TESTPOOL/$TESTFS ]]; then
 		echo $vol_set_size $sparse_vol_set_size $quota_set_size $resv_set_size $space_avail $RESV_DELTA
-		zfs get used $TESTPOOL $obj
+		zfs get used,avail,reservation,refreservation $TESTPOOL $obj
+		echo 512 > /sys/module/zfs/parameters/zfs_flags
 		zfs set quota=$quota_set_size $obj
-		zfs get used $TESTPOOL $obj
+		zfs get used,avail,reservation,refreservation $TESTPOOL $obj
 		is_linux && udev_wait
+		zpool sync $TESTPOOL
 		log_must zfs set quota=$quota_set_size $obj
 		((resv_set_size = quota_set_size + RESV_SIZE))
 		echo $vol_set_size $sparse_vol_set_size $quota_set_size $resv_set_size $space_avail $RESV_DELTA
