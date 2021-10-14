@@ -1,12 +1,16 @@
-name: zfs-tests-sanity
+name: zfs-tests-functional
 
 on:
   push:
   pull_request:
 
 jobs:
-  tests:
-    runs-on: ubuntu-latest
+  tests-functional-ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [18.04, 20.04]
+    runs-on: ubuntu-${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -23,7 +27,7 @@ jobs:
           libssl-dev libffi-dev libaio-dev libelf-dev libmount-dev \
           libpam0g-dev pamtester python-dev python-setuptools python-cffi \
           python-packaging python3 python3-dev python3-setuptools python3-cffi \
-          python3-packaging libcurl4-openssl-dev
+          libcurl4-openssl-dev python3-packaging
     - name: Autogen.sh
       run: |
         sh autogen.sh
@@ -49,7 +53,7 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     - name: Tests
       run: |
-        /usr/share/zfs/zfs-tests.sh -v -s 3G -r sanity
+        /usr/share/zfs/zfs-tests.sh -v -s 3G -T zfs_destroy,zfs_load-key,zfs_receive,zfs_unmount,zfs_upgrade,zpool_destroy,zpool_detach,history,reservation,snapused
     - name: Prepare artifacts
       if: failure()
       run: |
@@ -62,6 +66,6 @@ jobs:
     - uses: actions/upload-artifact@v2
       if: failure()
       with:
-        name: Test logs
+        name: Test logs Ubuntu-${{ matrix.os }}
         path: /var/tmp/test_results/20*/
         if-no-files-found: ignore
