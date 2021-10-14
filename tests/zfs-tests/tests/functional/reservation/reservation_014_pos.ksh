@@ -91,8 +91,11 @@ for obj in $TESTPOOL/$TESTFS $OBJ_LIST ; do
 	# the amount of space in the pool, whichever is smaller.
 	#
 	if [[ $obj == $TESTPOOL/$TESTFS ]]; then
+		echo $vol_set_size $sparse_vol_set_size $quota_set_size $resv_set_size $space_avail $RESV_DELTA
+		zpool sync $TESTPOOL
 		log_must zfs set quota=$quota_set_size $obj
 		((resv_set_size = quota_set_size + RESV_SIZE))
+		echo $vol_set_size $sparse_vol_set_size $quota_set_size $resv_set_size $space_avail $RESV_DELTA
 	elif [[ $obj == $TESTPOOL/$TESTVOL || $obj == $TESTPOOL/$TESTVOL2 ]]
 	then
 		resv_set_size=`expr $space_avail + $RESV_DELTA`

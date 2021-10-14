@@ -57,6 +57,9 @@ log_assert "Verify it is possible to set reservations multiple times " \
 function cleanup
 {
 	log_must zero_reservation $TESTPOOL/$TESTFS
+	
+	zpool sync $TESTPOOL
+	is_linux && udev_wait
 
 	for obj in $OBJ_LIST; do
 	datasetexists $obj && log_must zfs destroy -f $obj

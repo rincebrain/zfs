@@ -202,11 +202,11 @@ zfs holds -r $fssnap
 echo 512 > /sys/module/zfs/parameters/zfs_flags
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
+is_linux && udev_wait
 run_and_verify "zfs destroy -rf $fsclone"
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
 # hm
-is_linux && udev_wait
 zfs get all $volclone
 zfs get all $volclone@volsnap
 zfs get clones $volclone
@@ -215,6 +215,7 @@ zfs holds -r $volclone@volsnap
 zfs holds -r $volsnap
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
+is_linux && udev_wait
 run_and_verify "zfs destroy -rf $volclone"
 
 log_pass "zfs sub-commands which modify state are logged passed."
