@@ -203,8 +203,7 @@ run_and_verify "zfs destroy -rf $fsclone"
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
 # hm
-udevadm --trigger=event
-udevadm settle
+is_linux && udev_wait
 zfs get all $volclone
 zfs get all $volclone@volsnap
 zfs get clones $volclone
