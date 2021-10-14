@@ -49,6 +49,8 @@ verify_runnable "both"
 
 function cleanup
 {
+        is_linux && udev_wait
+        zpool sync $TESTPOOL
 	log_must zfs destroy -rR $USEDTEST
 }
 
