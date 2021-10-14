@@ -197,8 +197,9 @@ run_and_verify "zfs destroy -rf $fsclone"
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
 # stolen from zvol_misc
-udevadm trigger --action=change
-udevadm settle
+#blockdev_missing "${ZVOL_DEVDIR}/$vol"
+zfs get all $volclone
+echo 512 > /sys/module/zfs/parameters/zfs_flags
 run_and_verify "zfs destroy -rf $volclone"
 
 log_pass "zfs sub-commands which modify state are logged passed."
