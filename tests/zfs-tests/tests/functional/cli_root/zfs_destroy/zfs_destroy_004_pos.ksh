@@ -60,6 +60,12 @@ function cleanup
 			log_must zfs destroy -f $fs
 	done
 
+	df $TESTDIR1
+	df $TESTDIR2
+
+	zpool sync $TESTPOOL
+	is_linux && udev_wait
+
 	for dir in $TESTDIR1 $TESTDIR2; do
 		[[ -d $dir ]] && \
 			log_must rm -rf $dir

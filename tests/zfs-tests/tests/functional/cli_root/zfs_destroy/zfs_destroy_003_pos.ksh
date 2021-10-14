@@ -139,6 +139,9 @@ for obj in $child_fs $child_fs1 $ctr $ctr1; do
 done
 
 
+zpool sync $TESTPOOL
+is_linux && udev_wait
+
 log_note "Verify that 'zfs destroy -R' succeeds to destroy dataset " \
 	"with dependent clone outside it."
 

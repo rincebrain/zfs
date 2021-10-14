@@ -89,12 +89,19 @@ function negative_test
 setup_testenv snap
 negative_test "-f" "$CTR $FS $VOL"
 
+
+echo $(datasetexists $VOL)
+echo $(datasetexists $VOLCLONE)
+
 #
 # Create clones for filesystem and volume,
 # and verify 'zfs destroy' fails without '-R'.
 #
 setup_testenv clone
 negative_test "-r -rf" "$CTR $FS $VOL"
+
+echo $(datasetexists $VOL)
+echo $(datasetexists $VOLCLONE)
 
 #
 # Get $FS mountpoint and make it busy, and verify 'zfs destroy $CTR' fails
@@ -122,7 +129,11 @@ fi
 # that were removed.
 #
 setup_testenv clone
+echo $(datasetexists $VOL)
+echo $(datasetexists $VOLCLONE)
 negative_test "-R -rR" $FS
+echo $(datasetexists $VOL)
+echo $(datasetexists $VOLCLONE)
 check_dataset datasetexists $CTR $FS $VOL $VOLSNAP $VOLCLONE
 check_dataset datasetnonexists $FSSNAP $FSCLONE
 
