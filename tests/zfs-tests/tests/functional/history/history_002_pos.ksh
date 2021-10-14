@@ -194,17 +194,22 @@ run_and_verify "zfs promote $volclone"
 run_and_verify "zfs destroy $newfs"
 run_and_verify "zfs destroy $newvol"
 zfs get all $fsclone
+zfs get all $fsclone@fssnap
 zfs get clones $fsclone
+zfs get clones $fsclone@fssnap
 zfs holds -r $fsclone@fssnap
+echo 512 > /sys/module/zfs/parameters/zfs_flags
 run_and_verify "zfs destroy -rf $fsclone"
 zpool sync $TESTPOOL
 zpool wait $TESTPOOL
-# stolen from zvol_misc
-#blockdev_missing "${ZVOL_DEVDIR}/$vol"
+# hm
+udevadm --trigger=event
+udevadm settle
 zfs get all $volclone
+zfs get all $volclone@volsnap
 zfs get clones $volclone
+zfs get clones $volclone@volsnap
 zfs holds -r $volclone@volsnap
-echo 512 > /sys/module/zfs/parameters/zfs_flags
 run_and_verify "zfs destroy -rf $volclone"
 
 log_pass "zfs sub-commands which modify state are logged passed."
