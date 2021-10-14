@@ -84,6 +84,9 @@ write_count=$((fill_size / BLOCK_SIZE))
 # Now fill up the filesystem (which doesn't have a reservation set
 # and thus will use up whatever free space is left in the pool).
 echo $vol_set_size $space_avail $space_avail_still $fill_size $write_count $BLOCK_SIZE
+get_prop available $TESTPOOL
+is_linux && udev_wait
+get_prop available $TESTPOOL
 file_write -o create -f $TESTDIR/$TESTFILE1 -b $BLOCK_SIZE -c $write_count -d 0
 ret=$?
 if (($ret != $ENOSPC)); then
