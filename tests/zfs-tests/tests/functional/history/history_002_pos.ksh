@@ -194,7 +194,7 @@ run_and_verify "zfs promote $volclone"
 run_and_verify "zfs destroy $newfs"
 run_and_verify "zfs destroy $newvol"
 run_and_verify "zfs destroy -rf $fsclone"
-run_and_verify "zpool sync $TESTPOOL"
+run_and_verify "zpool wait $TESTPOOL"
 run_and_verify "zfs destroy -rf $volclone"
 
 log_pass "zfs sub-commands which modify state are logged passed."
