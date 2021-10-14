@@ -1,4 +1,4 @@
-name: zfs-tests-functional
+name: zfs-tests-failing
 
 on:
   push:
