@@ -49,11 +49,8 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     - name: Dumb
       run: |
-        sudo systemctl disable cloud-init-hotplugd.service
-        sudo systemctl disable cloud-init-hotplugd.socket
-        sudo systemctl stop cloud-init-hotplugd
-        sudo systemctl disable cloud-init.service
-        sudo systemctl stop cloud-init.service
+        sudo rm -f /lib/udev/rules.d/10-cloud-init-hook-hotplug.rules
+        sudo udevadm control --reload-rules
     - name: Tests
       run: |
         /usr/share/zfs/zfs-tests.sh -v -s 3G -r sanity
