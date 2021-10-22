@@ -59,6 +59,7 @@ KERNEL_C = \
 	bpobj.c \
 	bptree.c \
 	bqueue.c \
+	brt.c \
 	btree.c \
 	cityhash.c \
 	dbuf.c \
