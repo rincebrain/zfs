@@ -47,6 +47,13 @@ jobs:
         sudo rm -rf /opt/ghc
         sudo rm -rf "/usr/local/share/boost"
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+    - name: Dumb
+      run: |
+        sudo systemctl disable cloud-init-hotplugd.service
+        sudo systemctl disable cloud-init-hotplugd.socket
+        sudo systemctl stop cloud-init-hotplugd
+        sudo systemctl disable cloud-init.service
+        sudo systemctl stop cloud-init.service
     - name: Tests
       run: |
         /usr/share/zfs/zfs-tests.sh -v -s 3G -r sanity
