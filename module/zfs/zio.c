@@ -3336,6 +3336,7 @@ zio_ddt_write(zio_t *zio)
 	ddt_phys_t *ddp;
 
 	ASSERT(BP_GET_DEDUP(bp));
+	ASSERT(BP_GET_LEVEL(bp) == 0);
 	ASSERT(BP_GET_CHECKSUM(bp) == zp->zp_checksum);
 	ASSERT(BP_IS_HOLE(bp) || zio->io_bp_override);
 	ASSERT(!(zio->io_bp_override && (zio->io_flags & ZIO_FLAG_RAW)));
@@ -3415,8 +3416,13 @@ zio_ddt_free(zio_t *zio)
 	freedde = dde = ddt_lookup(ddt, bp, B_TRUE);
 	if (dde) {
 		ddp = ddt_phys_select(dde, bp);
-		if (ddp)
+		if (ddp) {
 			ddt_phys_decref(ddp);
+			/*
+			 * We don't want zio_brt_free() to be called too.
+			 */
+			zio->io_pipeline = ZIO_INTERLOCK_PIPELINE;
+		}
 	}
 	ddt_exit(ddt);
 
@@ -4925,6 +4931,7 @@ static zio_pipe_stage_t *zio_pipeline[] = {
 	zio_ddt_read_done,
 	zio_ddt_write,
 	zio_ddt_free,
+	zio_brt_free,
 	zio_gang_assemble,
 	zio_gang_issue,
 	zio_dva_throttle,
