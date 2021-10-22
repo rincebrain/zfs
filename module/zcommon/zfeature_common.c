@@ -714,6 +714,12 @@ zpool_feature_init(void)
 	    ZFEATURE_FLAG_ACTIVATE_ON_ENABLE, ZFEATURE_TYPE_BOOLEAN, NULL,
 	    sfeatures);
 
+	zfeature_register(SPA_FEATURE_BLOCK_CLONING,
+	    "com.fudosecurity:block_cloning", "block_cloning",
+	    "Block cloning through fclonefile(2) system call.",
+	    ZFEATURE_FLAG_READONLY_COMPAT, ZFEATURE_TYPE_BOOLEAN, NULL,
+	    sfeatures);
+
 	zfs_mod_list_supported_free(sfeatures);
 }
 
