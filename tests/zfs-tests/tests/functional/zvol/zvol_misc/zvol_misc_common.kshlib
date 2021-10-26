@@ -98,6 +98,7 @@ function blockdev_missing # device
 		block_device_wait
 		is_disk_device "$device" || return 0
 	done
+	lsof `readlink -f $device`
 	log_fail "$device exists when not expected"
 }
 
