@@ -48,7 +48,7 @@ verify_runnable "global"
 function cleanup
 {
 	if ismounted $mntp $NEWFS_DEFAULT_FS ; then
-		log_must umount $mntp
+		log_must_busy umount $mntp
 	fi
 
 	datasetexists $vol && destroy_dataset $vol

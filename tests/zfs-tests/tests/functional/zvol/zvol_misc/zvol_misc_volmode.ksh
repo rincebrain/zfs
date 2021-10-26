@@ -201,6 +201,7 @@ log_must zfs inherit volmode $SUBZVOL
 log_must zfs set volmode=none $VOLFS
 log_must zfs set volmode=full $TESTPOOL
 verify_inherited 'volmode' 'none' $SUBZVOL $VOLFS
+is_linux && udev_cleanup
 blockdev_missing $SUBZDEV
 blockdev_exists $ZDEV
 

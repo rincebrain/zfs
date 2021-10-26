@@ -53,6 +53,10 @@ jobs:
           if [ "${HASH}" = "121ff0ef1936cd2ef65aec0458a35772" ]; then
             # Just shove a zd* exclusion right above the hotplug hook...
             sudo sed -i -e s/'LABEL="cloudinit_hook"'/'KERNEL=="zd*", GOTO="cloudinit_end"\n&'/ "${FILE}"
+            NEWHASH=$(md5sum "${FILE}" | awk '{ print $1 }')
+            if [ "${HASH}" != "${NEWHASH}" ]; then
+              echo "Replaced!"
+            fi
             sudo udevadm control --reload-rules
           fi
         fi
