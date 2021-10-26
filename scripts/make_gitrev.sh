@@ -66,6 +66,22 @@ then
 	ZFS_GITREV="${ZFS_GITREV}-dist"
 fi
 ZFS_GITREV=${ZFS_GITREV:-unknown}
+META_VER=$(sed -n 's/^Version\:[[:blank:]]*\([0-9]\+\.[0-9]\+\.[0-9]\+\)/\1/p' "${top_srcdir}/META")
+
+if [ "${ZFS_GITREV}" = "unknown" ]
+then
+	echo "Warning: GITREV is unknown, this probably means your tarball was generated incorrectly."
+	echo "Please report a bug at https://github.com/openzfs/zfs/issues/new/choose"
+elif [ "$(echo $ZFS_GITREV | grep ${META_VER} | wc -c)" = "0" ]
+then
+	# Let's not break on CI runs, shall we?
+	if [ "$(echo $ZFS_GITREV | egrep '^[0-9a-f]{7}(-dist)?$' | wc -c)" = "0" ]
+	then
+		echo "Error: GITREV (${ZFS_GITREV}) does not contain the Version from META (${META_VER});" \
+		    "this probably means your git tree is mangled. Please recreate your branch and try again."
+		exit 1
+	fi
+fi
 
 GITREVTMP="${GITREV}~"
 printf '#define\tZFS_META_GITREV "%s"\n' "${ZFS_GITREV}" >"${GITREVTMP}"
