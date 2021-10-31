@@ -43,6 +43,12 @@
  */
 unsigned int zfs_fallocate_reserve_percent = 110;
 
+/*
+ * Unfortunately, with #11900 outstanding, you shouldn't
+ * always trust SEEK_{DATA,HOLE}...
+ */
+bool zfs_disable_seek_optimization = 1;
+
 static int
 zpl_open(struct inode *ip, struct file *filp)
 {
@@ -500,7 +506,8 @@ zpl_llseek(struct file *filp, loff_t offset, int whence)
 #if defined(SEEK_HOLE) && defined(SEEK_DATA)
 	fstrans_cookie_t cookie;
 
-	if (whence == SEEK_DATA || whence == SEEK_HOLE) {
+	if ((whence == SEEK_DATA || whence == SEEK_HOLE) &&
+	    !(zfs_disable_seek_optimization)) {
 		struct inode *ip = filp->f_mapping->host;
 		loff_t maxbytes = ip->i_sb->s_maxbytes;
 		loff_t error;
@@ -515,6 +522,8 @@ zpl_llseek(struct file *filp, loff_t offset, int whence)
 
 		return (error);
 	}
+	if (zfs_disable_seek_optimization)
+		return (-EOPNOTSUPP);
 #endif /* SEEK_HOLE && SEEK_DATA */
 
 	return (generic_file_llseek(filp, offset, whence));
@@ -1080,4 +1089,7 @@ const struct file_operations zpl_dir_file_operations = {
 module_param(zfs_fallocate_reserve_percent, uint, 0644);
 MODULE_PARM_DESC(zfs_fallocate_reserve_percent,
     "Percentage of length to use for the available capacity check");
+module_param(zfs_disable_seek_optimization, bool, 0644);
+MODULE_PARM_DESC(zfs_disable_seek_optimization,
+    "Disable SEEK_DATA/SEEK_HOLE");
 /* END CSTYLED */

@@ -114,6 +114,12 @@ VFS_SMR_DECLARE;
 #endif
 
 /*
+ * Unfortunately, with #11900 outstanding, you shouldn't
+ * always trust SEEK_{DATA,HOLE}...
+ */
+bool zfs_disable_seek_optimization = 1;
+
+/*
  * Programming rules.
  *
  * Each vnode op performs some logical unit of work.  To do this, the ZPL must
@@ -284,13 +290,17 @@ zfs_ioctl(vnode_t *vp, ulong_t com, intptr_t data, int flag, cred_t *cred,
 	case F_SEEK_DATA:
 	case F_SEEK_HOLE:
 	{
-		off = *(offset_t *)data;
-		/* offset parameter is in/out */
-		error = zfs_holey(VTOZ(vp), com, &off);
-		if (error)
-			return (error);
-		*(offset_t *)data = off;
-		return (0);
+		if (!(zfs_disable_seek_optimizations)) {
+			off = *(offset_t *)data;
+			/* offset parameter is in/out */
+			error = zfs_holey(VTOZ(vp), com, &off);
+			if (error)
+				return (error);
+			*(offset_t *)data = off;
+			return (0);
+		} else {
+			return (SET_ERROR(EOPNOTSUPP));
+		}
 	}
 	}
 	return (SET_ERROR(ENOTTY));
@@ -6219,3 +6229,7 @@ struct vop_vector zfs_shareops = {
 	.vop_pathconf =		zfs_freebsd_pathconf,
 };
 VFS_VOP_VECTOR_REGISTER(zfs_shareops);
+
+ZFS_MODULE_PARAM(zfs_disable_seek_optimizations, zfs_,
+    disable_seek_optimizations, UINT, ZMOD_RW,
+	"Disable SEEK_DATA/SEEK_HOLE");
