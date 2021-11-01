@@ -522,8 +522,10 @@ zpl_llseek(struct file *filp, loff_t offset, int whence)
 
 		return (error);
 	}
+/*
 	if (zfs_disable_seek_optimization)
 		return (-EOPNOTSUPP);
+ */
 #endif /* SEEK_HOLE && SEEK_DATA */
 
 	return (generic_file_llseek(filp, offset, whence));
