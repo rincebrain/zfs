@@ -31,13 +31,13 @@
 #include <sys/zio.h>
 #include <sys/brt.h>
 #include <sys/ddt.h>
+#include <sys/bitmap.h>
 #include <sys/zap.h>
 #include <sys/dmu_tx.h>
 #include <sys/arc.h>
 #include <sys/dsl_pool.h>
 #include <sys/dsl_scan.h>
 #include <sys/vdev_impl.h>
-#include <icp/include/sys/bitmap.h>	/* XXX */
 
 /*
  * BRT - Block Reference Table.
