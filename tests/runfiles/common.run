@@ -75,11 +75,9 @@ tags = ['functional', 'cachefile']
 [tests/functional/casenorm]
 tests = ['case_all_values', 'norm_all_values', 'mixed_create_failure',
     'sensitive_none_lookup', 'sensitive_none_delete',
-    'sensitive_formd_lookup', 'sensitive_formd_delete',
     'insensitive_none_lookup', 'insensitive_none_delete',
     'insensitive_formd_lookup', 'insensitive_formd_delete',
-    'mixed_none_lookup', 'mixed_none_lookup_ci', 'mixed_none_delete',
-    'mixed_formd_lookup', 'mixed_formd_lookup_ci', 'mixed_formd_delete']
+    'mixed_none_lookup', 'mixed_none_delete']
 tags = ['functional', 'casenorm']
 
 [tests/functional/channel_program/lua_core]
@@ -409,8 +407,7 @@ tests = ['zpool_import_001_pos', 'zpool_import_002_pos',
     'import_cachefile_shared_device',
     'import_devices_missing',
     'import_paths_changed',
-    'import_rewind_config_changed',
-    'import_rewind_device_replaced']
+    'import_rewind_config_changed']
 tags = ['functional', 'cli_root', 'zpool_import']
 timeout = 1200
 
@@ -691,7 +688,7 @@ tests = ['nestedfs_001_pos']
 tags = ['functional', 'nestedfs']
 
 [tests/functional/no_space]
-tests = ['enospc_001_pos', 'enospc_002_pos', 'enospc_003_pos',
+tests = ['enospc_001_pos', 'enospc_003_pos',
     'enospc_df']
 tags = ['functional', 'no_space']
 
@@ -768,7 +765,7 @@ tags = ['functional', 'refquota']
 
 [tests/functional/refreserv]
 tests = ['refreserv_001_pos', 'refreserv_002_pos', 'refreserv_003_pos',
-    'refreserv_004_pos', 'refreserv_005_pos', 'refreserv_multi_raidz',
+    'refreserv_005_pos', 'refreserv_multi_raidz',
     'refreserv_raidz']
 tags = ['functional', 'refreserv']
 
@@ -900,8 +897,7 @@ tags = ['functional', 'userquota']
 
 [tests/functional/vdev_zaps]
 tests = ['vdev_zaps_001_pos', 'vdev_zaps_002_pos', 'vdev_zaps_003_pos',
-    'vdev_zaps_004_pos', 'vdev_zaps_005_pos', 'vdev_zaps_006_pos',
-    'vdev_zaps_007_pos']
+    'vdev_zaps_004_pos', 'vdev_zaps_005_pos', 'vdev_zaps_006_pos']
 tags = ['functional', 'vdev_zaps']
 
 [tests/functional/write_dirs]
