@@ -30,6 +30,7 @@
 #include <sys/spa_impl.h>
 #include <sys/zio.h>
 #include <sys/brt.h>
+#include <sys/ddt.h>
 #include <sys/zap.h>
 #include <sys/dmu_tx.h>
 #include <sys/arc.h>
@@ -53,8 +54,8 @@
  * We don't want to update the whole structure every time. Maintain bitmap
  * of dirty blocks within the regions, so that single bit represents a
  * block size of refcounts. For example if we have a 64TB vdev then all
- * refcounts take 512kB of memory. If the block size if 4kB then we want to
- * have 128 separate bits dirty bits. Each bit will represent change in one
+ * refcounts take 512kB of memory. If the block size is 4kB then we want to
+ * have 128 separate dirty bits. Each bit will represent change in one
  * of 512 refcounts (4kB / sizeof(uint64_t)).
  */
 #define	BRT_RANGE_SIZE_TO_NBLOCKS(size, blocksize)			\
@@ -149,9 +150,8 @@ typedef struct brt_entry {
 } brt_entry_t;
 
 typedef struct brt_pending_entry {
-	brt_key_t	bpe_key;
-	uint64_t	bpe_dsize;
 	uint64_t	bpe_txg;
+	blkptr_t	bpe_bp;
 	list_node_t	bpe_node;
 } brt_pending_entry_t;
 
@@ -238,7 +238,6 @@ brt_zap_lookup(objset_t *os, uint64_t object, brt_entry_t *bre)
 	uint64_t one, physsize;
 	int error;
 
-	/* XXXPJD: Byte order of bre_key? */
 	error = zap_length_uint64(os, object, (uint64_t *)&bre->bre_key,
 	    BRT_KEY_WORDS, &one, &physsize);
 	if (error)
@@ -261,8 +260,6 @@ brt_zap_prefetch(objset_t *os, uint64_t object, brt_entry_t *bre)
 static int
 brt_zap_update(objset_t *os, uint64_t object, brt_entry_t *bre, dmu_tx_t *tx)
 {
-
-	/* XXXPJD: Byte order of bre_key? */
 	return (zap_update_uint64(os, object, (uint64_t *)&bre->bre_key,
 	    BRT_KEY_WORDS, 1, sizeof(bre->bre_phys), &bre->bre_phys, tx));
 }
@@ -270,8 +267,6 @@ brt_zap_update(objset_t *os, uint64_t object, brt_entry_t *bre, dmu_tx_t *tx)
 static int
 brt_zap_remove(objset_t *os, uint64_t object, brt_entry_t *bre, dmu_tx_t *tx)
 {
-
-	/* XXXPJD: Byte order of bre_key? */
 	return (zap_remove_uint64(os, object, (uint64_t *)&bre->bre_key,
 	    BRT_KEY_WORDS, tx));
 }
@@ -737,7 +732,7 @@ brt_object_create(brt_t *brt, dmu_tx_t *tx)
 	uint64_t *objectp = &brt->brt_object;
 
 	ASSERT(*objectp == 0);
-	VERIFY(brt_zap_create(os, objectp, tx) == 0);
+	VERIFY0(brt_zap_create(os, objectp, tx));
 	ASSERT(*objectp != 0);
 
 	VERIFY(zap_add(os, DMU_POOL_DIRECTORY_OBJECT, BRT_OBJECT_ENTRIES_NAME,
@@ -921,19 +916,22 @@ brt_free(brt_entry_t *bre)
 }
 
 static void
-brt_entry_addref(brt_t *brt, const brt_key_t *brk, uint64_t dsize)
+brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 {
 	brt_entry_t *bre, *racebre;
+	brt_key_t brk;
 	avl_index_t where;
 	int error;
 
 	ASSERT(MUTEX_HELD(&brt->brt_lock));
 
-	bre = avl_find(&brt->brt_tree, brk, NULL);
+	brt_key_fill(&brk, bp);
+
+	bre = avl_find(&brt->brt_tree, &brk, NULL);
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_addref_entry_in_memory);
 	} else {
-		bre = brt_alloc(brk);
+		bre = brt_alloc(&brk);
 
 		brt_exit(brt);
 
@@ -946,7 +944,7 @@ brt_entry_addref(brt_t *brt, const brt_key_t *brk, uint64_t dsize)
 
 		brt_enter(brt);
 
-		racebre = avl_find(&brt->brt_tree, brk, &where);
+		racebre = avl_find(&brt->brt_tree, &brk, &where);
 		if (racebre != NULL) {
 			BRTSTAT_BUMP(brt_addref_entry_read_lost_race);
 			brt_free(bre);
@@ -956,7 +954,7 @@ brt_entry_addref(brt_t *brt, const brt_key_t *brk, uint64_t dsize)
 			avl_insert(&brt->brt_tree, bre, where);
 	}
 	brt_phys_addref(&bre->bre_phys);
-	brt_vdev_addref(brt, bre, dsize);
+	brt_vdev_addref(brt, bre, bp_get_dsize(brt->brt_spa, bp));
 }
 
 /* Return TRUE if block should be freed immediately. */
@@ -1039,7 +1037,9 @@ brt_prefetch(brt_t *brt, const blkptr_t *bp)
 {
 	brt_entry_t bre;
 
-	if (!zfs_brt_prefetch || bp == NULL)
+	ASSERT(bp != NULL);
+
+	if (!zfs_brt_prefetch)
 		return;
 
 	brt_key_fill(&bre.bre_key, bp);
@@ -1058,9 +1058,7 @@ brt_pending_add(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
 	bpe = kmem_cache_alloc(brt_pending_entry_cache, KM_SLEEP);
 	bpe->bpe_txg = dmu_tx_get_txg(tx);
 	ASSERT3U(bpe->bpe_txg, !=, 0);
-	bpe->bpe_dsize = bp_get_dsize(brt->brt_spa, bp);
-
-	brt_key_fill(&bpe->bpe_key, bp);
+	bpe->bpe_bp = *bp;
 
 	brt_enter(brt);
 	list_insert_tail(&brt->brt_pending, bpe);
@@ -1068,6 +1066,52 @@ brt_pending_add(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
 
 	/* Prefetch BRT entry, as we will need it in the syncing context. */
 	brt_prefetch(brt, bp);
+}
+
+static boolean_t
+brt_add_to_ddt(spa_t *spa, const blkptr_t *bp)
+{
+	ddt_t *ddt;
+	ddt_entry_t *dde;
+	boolean_t result;
+
+	spa_config_enter(spa, SCL_ZIO, FTAG, RW_READER);
+	ddt = ddt_select(spa, bp);
+	ddt_enter(ddt);
+
+	dde = ddt_lookup(ddt, bp, B_TRUE);
+	ASSERT(dde != NULL);
+
+	if (dde->dde_type < DDT_TYPES) {
+		ddt_phys_t *ddp;
+
+		ASSERT3S(dde->dde_class, <, DDT_CLASSES);
+
+		ddp = &dde->dde_phys[BP_GET_NDVAS(bp)];
+		if (ddp->ddp_refcnt == 0) {
+			/* This should never happen? */
+			ddt_phys_fill(ddp, bp);
+		}
+		ddt_phys_addref(ddp);
+		result = B_TRUE;
+	} else {
+		/*
+		 * At the time of implementating this if the block has the
+		 * DEDUP flag set it must exist in the DEDUP table, but
+		 * there are many advocates that want ability to remove
+		 * entries from DDT with refcnt=1. If this will happen,
+		 * we may have a block with the DEDUP set, but which doesn't
+		 * have a corresponding entry in the DDT. Be ready.
+		 */
+		ASSERT3S(dde->dde_class, ==, DDT_CLASSES);
+		ddt_remove(ddt, dde);
+		result = B_FALSE;
+	}
+
+	ddt_exit(ddt);
+	spa_config_exit(spa, SCL_ZIO, FTAG);
+
+	return (result);
 }
 
 void
@@ -1082,17 +1126,29 @@ brt_pending_apply(spa_t *spa, uint64_t txg)
 
 	brt_enter(brt);
 	while ((bpe = list_head(&brt->brt_pending)) != NULL) {
+		boolean_t added_to_ddt;
+
 		ASSERT3U(txg, <=, bpe->bpe_txg);
 
 		if (txg < bpe->bpe_txg)
 			break;
 
 		list_remove(&brt->brt_pending, bpe);
+
 		/*
-		 * brt_entry_addref() may temporairly drop the BRT lock,
-		 * but that's ok.
+		 * If the block has DEDUP bit set, it means that it already
+		 * exists in the DEDUP table, so we can just use that instead
+		 * of creating new entry in the BRT table.
+		 *
+		 * The functions below will drop the BRT lock, but this is fine,
+		 * because on the next iteration we start from the list head.
 		 */
-		brt_entry_addref(brt, &bpe->bpe_key, bpe->bpe_dsize);
+		if (BP_GET_DEDUP(&bpe->bpe_bp))
+			added_to_ddt = brt_add_to_ddt(spa, &bpe->bpe_bp);
+		else
+			added_to_ddt = B_FALSE;
+		if (!added_to_ddt)
+			brt_entry_addref(brt, &bpe->bpe_bp);
 
 		kmem_cache_free(brt_pending_entry_cache, bpe);
 	}
