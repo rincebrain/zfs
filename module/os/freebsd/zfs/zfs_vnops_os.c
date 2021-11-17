@@ -936,8 +936,8 @@ sys_fclonefile(struct thread *td, void *arg)
  * The `sysent' for the new syscall
  */
 static struct sysent fclonefile_sysent = {
-	4,		/* sy_narg */
-	sys_fclonefile	/* sy_call */
+	.sy_narg = 4,
+	.sy_call = sys_fclonefile
 };
 
 /*
