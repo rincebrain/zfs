@@ -1242,21 +1242,6 @@ brt_unload(spa_t *spa)
 	}
 }
 
-#ifdef TODO
-boolean_t
-brt_contains(spa_t *spa, const blkptr_t *bp)
-{
-	brt_t *brt;
-	brt_entry_t bre;
-
-	brt = spa->spa_brt;
-
-	brt_key_fill(&bre.bre_key, bp);
-
-	return (brt_object_lookup(brt, &bre));
-}
-#endif
-
 static void
 brt_sync_entry(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx, uint64_t txg)
 {

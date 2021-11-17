@@ -46,8 +46,6 @@ extern boolean_t brt_may_exists(spa_t *spa, const blkptr_t *bp);
 extern void brt_init(void);
 extern void brt_fini(void);
 
-extern boolean_t brt_contains(spa_t *spa, const blkptr_t *bp);
-
 extern void brt_pending_add(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx);
 extern void brt_pending_apply(spa_t *spa, uint64_t txg);
 
