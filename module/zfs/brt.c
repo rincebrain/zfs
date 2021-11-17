@@ -667,7 +667,7 @@ brt_vdevs_sync(brt_t *brt, dmu_tx_t *tx)
 		brtvd = &brt->brt_vdevs[vdevid];
 		if (brtvd->bv_dirty)
 			brt_vdev_sync_one(brt, brtvd, tx);
-		if (brtvd->bv_count == 0)
+		if (brtvd->bv_object != 0 && brtvd->bv_count == 0)
 			brt_vdev_destroy(brt, brtvd, tx);
 	}
 }
