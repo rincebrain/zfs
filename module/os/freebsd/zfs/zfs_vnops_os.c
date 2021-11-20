@@ -56,6 +56,7 @@
 #include <sys/sysproto.h>
 #include <sys/errno.h>
 #include <sys/unistd.h>
+#include <sys/resourcevar.h>
 #include <sys/zfs_dir.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/fs/zfs.h>
@@ -379,22 +380,44 @@ zfs_verify_zp(znode_t *zp)
 }
 
 static int
-zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
-    ssize_t *donep)
+freebsd_rlimit_fsize(off_t fsize, struct thread *td)
+{
+	off_t lim;
+
+	if (td == NULL)
+		return (0);
+
+	lim = lim_cur(td, RLIMIT_FSIZE);
+	if (__predict_true((uoff_t)fsize <= lim))
+		return (0);
+
+	/*
+	 * The limit is reached.
+	 */
+	PROC_LOCK(td->td_proc);
+	kern_psignal(td->td_proc, SIGXFSZ);
+	PROC_UNLOCK(td->td_proc);
+
+	return (EFBIG);
+}
+
+static int
+zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, struct thread *td,
+    cred_t *cr, ssize_t *donep)
 {
 	znode_t		*srczp = VTOZ(srcvp);
 	znode_t		*dstzp = VTOZ(dstvp);
 	zfsvfs_t	*srczfsvfs, *dstzfsvfs;
-	rlim64_t	limit = MAXOFFSET_T;
 	dmu_buf_impl_t	*db;
 	dmu_tx_t	*tx;
 	zilog_t		*zilog;
 	offset_t	offset;
-	zfs_locked_range_t *lr;
+	zfs_locked_range_t *srclr, *dstlr;
 	int		error;
 	int		count = 0;
 	sa_bulk_attr_t	bulk[4];
 	uint64_t	mtime[2], ctime[2];
+	uint64_t	dstsize;
 	uint64_t	uid, gid, projid;
 	blkptr_t	*bps;
 	size_t		nbps;
@@ -463,15 +486,6 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 		return (0);
 	}
 
-	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(dstzfsvfs), NULL,
-	    &mtime, 16);
-	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(dstzfsvfs), NULL,
-	    &ctime, 16);
-	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_SIZE(dstzfsvfs), NULL,
-	    &dstzp->z_size, 8);
-	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_FLAGS(dstzfsvfs), NULL,
-	    &dstzp->z_pflags, 8);
-
 	/*
 	 * Callers might not be able to detect properly that we are read-only,
 	 * so check it explicitly here.
@@ -485,8 +499,11 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 	 * When we clone a file we expect destination to be empty.
 	 */
 	if (dstzp->z_size > 0) {
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (SET_ERROR(ENOTEMPTY));
+		/* ...unless we are replying, then we can append. */
+		if (!dstzfsvfs->z_replay || dstzp->z_size > srczp->z_size) {
+			zfs_exit_two(srczfsvfs, dstzfsvfs);
+			return (SET_ERROR(ENOTEMPTY));
+		}
 	}
 
 	/*
@@ -499,30 +516,43 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 		return (SET_ERROR(EPERM));
 	}
 
-	zilog = dstzfsvfs->z_log;
-
-	/* TODO: Range-lock srczp for reading. */
-	/*
-	 * Note that if the file block size will change as a result of
-	 * this write, then this range lock will lock the entire file
-	 * so that we can re-write the block safely.
-	 */
-	lr = zfs_rangelock_enter(&dstzp->z_rangelock, 0, srczp->z_size,
-	    RL_WRITER);
-
-#ifdef TODO
-	if (vn_rlimit_fsize(dstvp, uio, uio->uio_td)) {
-		zfs_rangelock_exit(lr);
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (EFBIG);
+	if (srczp < dstzp) {
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_READER);
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_WRITER);
+	} else {
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_WRITER);
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_READER);
 	}
-#endif
 
-	if (srczp->z_size >= limit) {
-		zfs_rangelock_exit(lr);
+	error = freebsd_rlimit_fsize(srczp->z_size, td);
+	if (error != 0) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (error);
+	}
+
+	if (srczp->z_size >= MAXOFFSET_T) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EFBIG));
 	}
+
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(dstzfsvfs), NULL,
+	    &mtime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(dstzfsvfs), NULL,
+	    &ctime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_SIZE(dstzfsvfs), NULL,
+	    &dstzp->z_size, 8);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_FLAGS(dstzfsvfs), NULL,
+	    &dstzp->z_pflags, 8);
+
+	zilog = dstzfsvfs->z_log;
 
 	uid = dstzp->z_uid;
 	gid = dstzp->z_gid;
@@ -533,10 +563,9 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 	 * in a separate transaction; this keeps the intent log records small
 	 * and allows us to do more fine-grained space accounting.
 	 */
-	for (offset = 0; offset < srczp->z_size; offset += DMU_MAX_ACCESS) {
+	for (offset = dstzp->z_size; offset < srczp->z_size; offset += DMU_MAX_ACCESS) {
 		length = MIN(DMU_MAX_ACCESS, srczp->z_size - offset);
 
-#ifdef TODO
 		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
 		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
 		    (projid != ZFS_DEFAULT_PROJID &&
@@ -546,7 +575,6 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 			error = SET_ERROR(EDQUOT);
 			break;
 		}
-#endif
 
 		/*
 		 * Start a transaction.
@@ -555,19 +583,19 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 
 		error = dmu_brt_readbps(srczfsvfs->z_os, srczp->z_id, offset,
 		    length, tx, &bps, &nbps);
-		if (error) {
-			/* TODO */
+		if (error != 0) {
 			dmu_tx_abort(tx);
 			break;
 		}
 		/*
-		 * Encrypted data is fine as long it comes from the same dataset.
+		 * Encrypted data is fine as long as it comes from the same
+		 * dataset.
 		 * TODO: We want to extend it in the future to allow cloning to
 		 * datasets with the same keys, like clones or to be able to
-		 * clone a file from a snapshot of an encrypted dataset to the
+		 * clone a file from a snapshot of an encrypted dataset into the
 		 * dataset.
 		 */
-		if (BP_IS_ENCRYPTED(&bps[0])) {
+		if (BP_IS_PROTECTED(&bps[0])) {
 			if (srczfsvfs != dstzfsvfs) {
 				dmu_tx_abort(tx);
 				kmem_free(bps, sizeof(bps[0]) * nbps);
@@ -583,7 +611,7 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 		DB_DNODE_EXIT(db);
 		zfs_sa_upgrade_txholds(tx, dstzp);
 		error = dmu_tx_assign(tx, TXG_WAIT);
-		if (error) {
+		if (error != 0) {
 			dmu_tx_abort(tx);
 			kmem_free(bps, sizeof(bps[0]) * nbps);
 			break;
@@ -591,28 +619,19 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 
 		/*
 		 * Copy source znode's block size. This only happens on the
-		 * first iteration since zfs_range_reduce() will shrink down
-		 * r_len to the appropriate size.
+		 * first iteration since zfs_rangelock_reduce() will shrink down
+		 * lr_length to the appropriate size.
 		 */
-		if (lr->lr_length == UINT64_MAX) {
+		if (dstlr->lr_length == UINT64_MAX) {
 			/*
 			 * XXXPJD: In FreeBSD the vnode is shared-locked,
 			 * so z_size and z_blksz cannot change.
 			 */
 			zfs_grow_blocksize(dstzp, srczp->z_blksz, tx);
-			zfs_rangelock_reduce(lr, 0, srczp->z_size);
+			zfs_rangelock_reduce(dstlr, 0, srczp->z_size);
 		}
 
-#if 0
-		/*
-		 * XXX - should we really limit each write to z_max_blksz?
-		 * Perhaps we should use SPA_MAXBLOCKSIZE chunks?
-		 */
-		nbytes = MIN(n, max_blksz - P2PHASE(woff, max_blksz));
-
-		if (woff + nbytes > dstzp->z_size)
-			vnode_pager_setsize(dstvp, woff + nbytes);
-#endif
+		vnode_pager_setsize(dstvp, offset + length);
 
 		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, offset, length, tx,
 		    bps, nbps);
@@ -664,18 +683,10 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 		 * Update the file size (zp_size) if it has changed;
 		 * account for possible concurrent updates.
 		 */
-		/*
-		 * XXXPJD: In FreeBSD the vnode is locked exclusively, so there
-		 * cannot be concurrent updates.
-		 */
-#if 0
-		while ((end_size = dstzp->z_size) < offset) {
-			(void) atomic_cas_64(&dstzp->z_size, end_size, offset);
-			ASSERT(error == 0 || error == EFAULT);
+		while ((dstsize = dstzp->z_size) < offset + length) {
+			(void) atomic_cas_64(&dstzp->z_size, dstsize,
+			    offset + length);
 		}
-#else
-		dstzp->z_size += length;
-#endif
 #ifdef TODO
 		/*
 		 * If we are replaying and eof is non zero then force
@@ -686,26 +697,23 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 			dstzp->z_size = dstzfsvfs->z_replay_eof;
 #endif
 
-		if (error == 0)
-			error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
-		else
-			(void) sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
+		error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
 
 #ifdef TODO
-		zfs_log_write(zilog, tx, TX_WRITE, dstzp, offset, tx_bytes,
-		    ioflag, NULL, NULL);
+		zfs_log_clone(zilog, tx, TX_CLONE, srczp, dstzp, offset,
+		    length);
 #endif
 		dmu_tx_commit(tx);
 
-		if (error == 0) {
+		if (error == 0)
 			*donep += length;
-		}
 
 		if (error != 0)
 			break;
 	}
 
-	zfs_rangelock_exit(lr);
+	zfs_rangelock_exit(dstlr);
+	zfs_rangelock_exit(srclr);
 
 #ifdef TODO
 	/*
@@ -727,11 +735,11 @@ zfs_clonefile(vnode_t *srcvp, vnode_t *dstvp, int ioflag, cred_t *cr,
 		return (error);
 	}
 
-#ifdef TODO
 	if (ioflag & (FSYNC | FDSYNC) ||
 	    dstzfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, dstzp->z_id);
 
+#ifdef TODO
 	nwritten = start_resid - uio->uio_resid;
 	dataset_kstats_update_write_kstats(&dstzfsvfs->z_kstat, nwritten);
 #endif
@@ -749,6 +757,7 @@ struct clonefile_lock {
 	int		 srcvnlock;
 	int		 dstvnlock;
 	struct mount	*dstmp;
+	int		 ioflag;
 };
 
 static int
@@ -784,10 +793,8 @@ clonefile_lock_dst(struct file *fp, struct vnode *vp, struct thread *td,
 
 	if (MNT_SHARED_WRITES(*mpp) ||
 	    (*mpp == NULL && MNT_SHARED_WRITES(vp->v_mount))) {
-		printf("%s:%u: LK_SHARED\n", __func__, __LINE__);
 		lockflags = LK_SHARED;
 	} else {
-		printf("%s:%u: LK_EXCLUSIVE\n", __func__, __LINE__);
 		lockflags = LK_EXCLUSIVE;
 	}
 
@@ -844,6 +851,7 @@ clonefile_lock(int srcfd, int dstfd, struct thread *td,
 	cbl->srcvnlock = 0;
 	cbl->dstvnlock = 0;
 	cbl->dstmp = NULL;
+	cbl->ioflag = 0;
 
 	error = fget_read(td, srcfd, &cap_read_rights, &cbl->srcfp);
 	if (error != 0) {
@@ -892,6 +900,22 @@ clonefile_lock(int srcfd, int dstfd, struct thread *td,
 		goto out;
 	}
 
+	if ((cbl->dstfp->f_flag & O_APPEND) != 0) {
+		cbl->ioflag |= IO_APPEND;
+	}
+	if ((cbl->dstfp->f_flag & FNONBLOCK) != 0) {
+		cbl->ioflag |= IO_NDELAY;
+	}
+	if ((cbl->dstfp->f_flag & O_DIRECT) != 0) {
+		cbl->ioflag |= IO_DIRECT;
+	}
+	if ((cbl->dstfp->f_flag & O_FSYNC) != 0) {
+		cbl->ioflag |= IO_SYNC;
+	}
+	if ((cbl->dstfp->f_flag & O_DSYNC) != 0) {
+		cbl->ioflag |= IO_SYNC | IO_DATASYNC;
+	}
+
 out:
 	if (error != 0) {
 		clonefile_unlock(cbl, td);
@@ -923,7 +947,8 @@ sys_fclonefile(struct thread *td, void *arg)
 		return (error);
 	}
 
-	error = zfs_clonefile(cbl.srcvp, cbl.dstvp, 0, td->td_ucred, &done);
+	error = zfs_clonefile(cbl.srcvp, cbl.dstvp, ioflags(cbl.ioflag), td,
+	    td->td_ucred, &done);
 
 	clonefile_unlock(&cbl, td);
 
