@@ -53,6 +53,7 @@ $(MODULE)-objs += algs/skein/skein.o
 $(MODULE)-objs += algs/skein/skein_block.o
 $(MODULE)-objs += algs/skein/skein_iv.o
 
+$(MODULE)-$(CONFIG_ARM64) += asm-aarch64/blake3/blake3_neon.o
 $(MODULE)-$(CONFIG_ARM64) += algs/blake3/blake3_neon.o
 
 $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/aes/aeskey.o
@@ -100,6 +101,7 @@ ICP_DIRS = \
 	algs/sha1 \
 	algs/sha2 \
 	algs/skein \
+	asm-aarch64/blake3 \
 	asm-x86_64 \
 	asm-x86_64/aes \
 	asm-x86_64/blake3 \

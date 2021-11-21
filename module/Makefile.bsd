@@ -11,6 +11,7 @@ KMOD=	openzfs
 
 .PATH:	${SRCDIR}/avl \
 	${SRCDIR}/icp/algs/blake3 \
+	${SRCDIR}/icp/asm-aarch64/blake3 \
 	${SRCDIR}/icp/asm-x86_64/blake3 \
 	${SRCDIR}/lua \
 	${SRCDIR}/nvpair \
@@ -84,7 +85,11 @@ SRCS+=  edonr.c
 SRCS+=	blake3.c \
 	blake3_generic.c \
 	blake3_impl.c \
+	blake3_neon.c \
 	blake3_x86-64.c
+
+#icp/asm-aarch64/blake3
+SRCS+=	blake3_neon.S \
 
 #icp/asm-x86_64/blake3
 SRCS+=	blake3_avx2.S \

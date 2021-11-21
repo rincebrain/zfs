@@ -24,9 +24,15 @@ ASM_SOURCES_AS = \
 	asm-x86_64/sha1/sha1-x86_64.S \
 	asm-x86_64/sha2/sha256_impl.S \
 	asm-x86_64/sha2/sha512_impl.S
+else 
+if TARGET_CPU_AARCH64
+ASM_SOURCES_C =
+ASM_SOURCES_AS = \
+	asm-aarch64/blake3/blake3_neon.S
 else
 ASM_SOURCES_C =
 ASM_SOURCES_AS =
+endif
 endif
 
 KERNEL_C = \
