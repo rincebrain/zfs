@@ -26,11 +26,6 @@ AC_DEFUN([ZFS_AC_CONFIG_ALWAYS_TOOLCHAIN_SIMD], [
 			ZFS_AC_CONFIG_TOOLCHAIN_CAN_BUILD_MOVBE
 			;;
 	esac
-	case "$host_cpu" in
-		aarch64)
-			ZFS_AC_CONFIG_TOOLCHAIN_CAN_BUILD_ARM_NEON
-			;;
-	esac
 ])
 
 dnl #
