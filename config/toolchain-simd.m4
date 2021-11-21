@@ -435,7 +435,7 @@ AC_DEFUN([ZFS_AC_CONFIG_TOOLCHAIN_CAN_BUILD_ARM_NEON], [
 	AC_MSG_CHECKING([whether host toolchain supports NEON])
 
 	AC_LINK_IFELSE([AC_LANG_SOURCE([[
-		include <arm_neon.h>
+		#include <arm_neon.h>
 		void main()
 		{
 			return;

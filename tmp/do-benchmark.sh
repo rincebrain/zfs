@@ -4,14 +4,17 @@
 export PATH="../bin:$PATH"
 
 # 4GB pool in memory
-DISK="/dev/shm/testdisk.raw"
+#DISK="/dev/shm/testdisk.raw"
+DISK="/tmp/testdisk.raw"
 TDIR="/dev/shm/linux-5.11.13"
 
 # name of testpool
 POOL="testpool"
 
 zpool destroy $POOL
+sudo rm -f $DISK
 dd if=/dev/zero of=$DISK bs=2G count=1
+#truncate -s 2G $DISK
 rm -rf /testpool
 
 function load_testdir() {
@@ -58,15 +61,19 @@ function doit() {
 sync
 echo 3 > /proc/sys/vm/drop_caches
 time doit edonr,verify
+echo "^ Edon-R"
 
 sync
 echo 3 > /proc/sys/vm/drop_caches
 time doit sha256
+echo "^ SHA256"
 
 sync
 echo 3 > /proc/sys/vm/drop_caches
 time doit skein
+echo "^ Skein"
 
 sync
 echo 3 > /proc/sys/vm/drop_caches
 time doit blake3
+echo "^ BLAKE3"

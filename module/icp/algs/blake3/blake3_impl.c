@@ -81,6 +81,8 @@ blake3_impl_get_ops(void)
 		if (blake3_impls[i]->is_supported())
 			blake3_optimal_impls = blake3_impls[i];
 	}
-
+	#ifdef _KERNEL
+		printk(KERN_INFO "Fastest implementation: %pS (of %lu implementations)", blake3_optimal_impls, ARRAY_SIZE(blake3_impls));
+	#endif
 	return (blake3_optimal_impls);
 }

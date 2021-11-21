@@ -29,13 +29,20 @@
 
 #if defined(__aarch64__) && defined(HAVE_ARM_NEON_H)
 
+#ifndef _KERNEL
 #include <arm_neon.h>
+#else
+#include <sys/simd.h>
+#include "blake3_impl.h"
+#endif
 
 #include <sys/types.h>
 #include <sys/strings.h>
 #include <sys/simd.h>
 
 #include "blake3_impl.h"
+
+
 
 static inline uint32x4_t loadu_128(const uint8_t src[16])
 {
@@ -109,7 +116,7 @@ static void blake3_compress_xof_generic(const uint32_t cv[8],
     uint64_t counter, uint8_t flags, uint8_t out[64])
 {
 	const blake3_impl_ops_t *ops = blake3_impl_get_generic_ops();
-	ops->compress_in_xof(cv, block, block_len, counter, flags, out);
+	ops->compress_xof(cv, block, block_len, counter, flags, out);
 }
 
 static inline void round_fn4(uint32x4_t v[16], uint32x4_t m[16], size_t r)
@@ -402,8 +409,15 @@ static void blake3_hash_many_neon(const uint8_t *const *inputs,
 
 static boolean_t blake3_is_neon_supported(void)
 {
-	/* XXX - check register set */
-	return (B_TRUE);
+	#if defined(__aarch64__)
+		/* NEON isn't optional in AArch64 */
+		return (B_TRUE);
+	#elif defined(__arm__)
+		/* XXX - check register set */
+		return (B_TRUE);
+	#else
+		return (B_FALSE);
+	#endif
 }
 
 const blake3_impl_ops_t blake3_neon_impl = {
