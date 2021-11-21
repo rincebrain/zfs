@@ -42,7 +42,7 @@ static const blake3_impl_ops_t *blake3_impls[] = {
 #if defined(__x86_64) && defined(HAVE_AVX512F) && defined(HAVE_AVX512VL)
 	&blake3_avx512_impl,
 #endif
-#if defined(__aarch64__) && defined(HAVE_ARM_NEON_H)
+#if defined(__aarch64__)
 	&blake3_neon_impl,
 #endif
 };
@@ -78,11 +78,18 @@ blake3_impl_get_ops(void)
 	 * The last implementation is assumed to be the fastest.
 	 */
 	for (int i = 0; i < ARRAY_SIZE(blake3_impls); i++) {
-		if (blake3_impls[i]->is_supported())
+		if (blake3_impls[i]->is_supported()) {
+#ifdef _KERNEL
+			printk(KERN_INFO "Available implementation: %pS (%d of"
+			    " %lu implementations)", blake3_impls[i], i,
+			    ARRAY_SIZE(blake3_impls));
+#endif
 			blake3_optimal_impls = blake3_impls[i];
 	}
-	#ifdef _KERNEL
-		printk(KERN_INFO "Fastest implementation: %pS (of %lu implementations)", blake3_optimal_impls, ARRAY_SIZE(blake3_impls));
-	#endif
+#ifdef _KERNEL
+	printk(KERN_INFO "Fastest implementation: %pS (of %lu "
+	    "implementations)", blake3_optimal_impls,
+	    ARRAY_SIZE(blake3_impls));
+#endif
 	return (blake3_optimal_impls);
 }

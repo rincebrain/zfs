@@ -70,6 +70,11 @@ echo "^ SHA256"
 
 sync
 echo 3 > /proc/sys/vm/drop_caches
+time doit sha512
+echo "^ SHA512/256"
+
+sync
+echo 3 > /proc/sys/vm/drop_caches
 time doit skein
 echo "^ Skein"
 

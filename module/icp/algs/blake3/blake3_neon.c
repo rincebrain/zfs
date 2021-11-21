@@ -55,7 +55,7 @@ static void blake3_compress_xof_generic(const uint32_t cv[8],
 static inline void hash_one_neon(const uint8_t *input, size_t blocks,
     const uint32_t key[8], uint64_t counter, uint8_t flags,
     uint8_t flags_start, uint8_t flags_end, uint8_t out[BLAKE3_OUT_LEN]) {
-    	uint32_t cv[8];
+	uint32_t cv[8];
 	memcpy(cv, key, BLAKE3_KEY_LEN);
 	uint8_t block_flags = flags | flags_start;
 	while (blocks > 0) {
@@ -81,23 +81,23 @@ static void blake3_hash_many_neon(const uint8_t *const *inputs,
     size_t num_inputs, size_t blocks, const uint32_t key[8], uint64_t counter,
     boolean_t increment_counter, uint8_t flags, uint8_t flags_start, uint8_t
     flags_end, uint8_t *out) {
-    	kfpu_begin();
-    	_blake3_hash_many_neon(inputs, num_inputs, blocks, key, counter, increment_counter,
-    	flags, flags_start, flags_end, out);
-    	kfpu_end();
+	kfpu_begin();
+	_blake3_hash_many_neon(inputs, num_inputs, blocks, key, counter,
+	increment_counter, flags, flags_start, flags_end, out);
+	kfpu_end();
 }
 
 static boolean_t blake3_is_neon_supported(void)
 {
-	#if defined(__aarch64__)
+#if defined(__aarch64__)
 		/* NEON isn't optional in AArch64 */
 		return (kfpu_allowed());
-	#elif defined(__arm__)
+#elif defined(__arm__)
 		/* XXX - check register set */
 		return (kfpu_allowed());
-	#else
+#else
 		return (B_FALSE);
-	#endif
+#endif
 }
 
 const blake3_impl_ops_t blake3_neon_impl = {
