@@ -7049,6 +7049,7 @@ clonefile_unlock(struct clonefile_lock *cbl, struct thread *td)
 	cbl->dstvp = NULL;
 	cbl->dstvnlock = B_FALSE;
 	cbl->dstmp = NULL;
+	cbl->ioflag = 0;
 }
 
 static int
