@@ -7048,7 +7048,29 @@ clonefile_unlock(struct clonefile_lock *cbl, struct thread *td)
 	cbl->dstvp = NULL;
 	cbl->dstvnlock = B_FALSE;
 	cbl->dstmp = NULL;
-	cbl->ioflag = 0;
+}
+
+static int
+clonefile_get_ioflag(struct file *fp)
+{
+	int ioflag = 0;
+
+	if ((fp->f_flag & O_APPEND) != 0) {
+		ioflag |= IO_APPEND;
+	}
+	if ((fp->f_flag & FNONBLOCK) != 0) {
+		ioflag |= IO_NDELAY;
+	}
+	if ((fp->f_flag & O_DIRECT) != 0) {
+		ioflag |= IO_DIRECT;
+	}
+	if ((fp->f_flag & O_FSYNC) != 0) {
+		ioflag |= IO_SYNC;
+	}
+	if ((fp->f_flag & O_DSYNC) != 0) {
+		ioflag |= IO_SYNC | IO_DATASYNC;
+	}
+	return (ioflag);
 }
 
 static int
