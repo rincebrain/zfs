@@ -1038,7 +1038,8 @@ zfs_verify_zp(znode_t *zp)
 }
 
 int
-zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
+zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
+    znode_t *dstzp, uint64_t dstoffset, int dstioflag, uint64_t length,
     cred_t *cr, ssize_t *donep)
 {
 	zfsvfs_t	*srczfsvfs, *dstzfsvfs;
@@ -1046,13 +1047,11 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 	dmu_buf_impl_t	*db;
 	dmu_tx_t	*tx;
 	zilog_t		*zilog;
-	offset_t	offset;
-	uint64_t	length;
+	uint64_t	dstsize, size;
 	int		error;
 	int		count = 0;
 	sa_bulk_attr_t	bulk[4];
 	uint64_t	mtime[2], ctime[2];
-	uint64_t	dstsize;
 	uint64_t	uid, gid, projid;
 	blkptr_t	*bps;
 	size_t		nbps;
@@ -1110,12 +1109,30 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		return (SET_ERROR(EOPNOTSUPP));
 	}
 
-	/*
-	 * If the source is empty there is nothing to clone, leave now.
-	 */
-	if (srczp->z_size == 0) {
+	if (srcoffset >= srczp->z_size) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (0);
+	}
+	if (length == 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (0);
+	}
+	if (length == UINT64_MAX) {
+		length = srczp->z_size - srcoffset;
+	}
+
+	if ((srcoffset % DMU_MAX_ACCESS) != 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EINVAL));
+	}
+	if ((dstoffset % DMU_MAX_ACCESS) != 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EINVAL));
+	}
+	if ((length % DMU_MAX_ACCESS) != 0 &&
+	    length != srczp->z_size - srcoffset) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EINVAL));
 	}
 
 	/*
@@ -1125,17 +1142,6 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 	if (zfs_is_readonly(dstzfsvfs)) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EROFS));
-	}
-
-	/*
-	 * When we clone a file we expect destination to be empty.
-	 */
-	if (dstzp->z_size > 0) {
-		/* ...unless we are replying, then we can append. */
-		if (!dstzfsvfs->z_replay || dstzp->z_size > srczp->z_size) {
-			zfs_exit_two(srczfsvfs, dstzfsvfs);
-			return (SET_ERROR(ENOTEMPTY));
-		}
 	}
 
 	/*
@@ -1164,18 +1170,18 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		zil_commit(srczfsvfs->z_log, srczp->z_id);
 
 	if (srczp < dstzp) {
-		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
-		    srczp->z_size, RL_READER);
-		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
-		    srczp->z_size, RL_WRITER);
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, srcoffset,
+		    length, RL_READER);
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstoffset,
+		    length, RL_WRITER);
 	} else {
-		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
-		    srczp->z_size, RL_WRITER);
-		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
-		    srczp->z_size, RL_READER);
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstoffset,
+		    length, RL_WRITER);
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, srcoffset,
+		    length, RL_READER);
 	}
 
-	error = zn_rlimit_fsize(srczp->z_size);
+	error = zn_rlimit_fsize(dstoffset + length);
 	if (error != 0) {
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
@@ -1183,7 +1189,7 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		return (error);
 	}
 
-	if (srczp->z_size >= MAXOFFSET_T) {
+	if (srcoffset >= MAXOFFSET_T || dstoffset >= MAXOFFSET_T) {
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
@@ -1210,9 +1216,8 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 	 * in a separate transaction; this keeps the intent log records small
 	 * and allows us to do more fine-grained space accounting.
 	 */
-	for (offset = dstzp->z_size; offset < srczp->z_size;
-	    offset += DMU_MAX_ACCESS) {
-		length = MIN(DMU_MAX_ACCESS, srczp->z_size - offset);
+	while (length > 0) {
+		size = MIN(DMU_MAX_ACCESS, length);
 
 		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
 		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
@@ -1229,8 +1234,8 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		 */
 		tx = dmu_tx_create(dstzfsvfs->z_os);
 
-		error = dmu_brt_readbps(srczfsvfs->z_os, srczp->z_id, offset,
-		    length, tx, &bps, &nbps);
+		error = dmu_brt_readbps(srczfsvfs->z_os, srczp->z_id, srcoffset,
+		    size, tx, &bps, &nbps);
 		if (error != 0) {
 			dmu_tx_abort(tx);
 			break;
@@ -1255,7 +1260,7 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		dmu_tx_hold_sa(tx, dstzp->z_sa_hdl, B_FALSE);
 		db = (dmu_buf_impl_t *)sa_get_db(dstzp->z_sa_hdl);
 		DB_DNODE_ENTER(db);
-		dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), offset, length);
+		dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), dstoffset, size);
 		DB_DNODE_EXIT(db);
 		zfs_sa_upgrade_txholds(tx, dstzp);
 		error = dmu_tx_assign(tx, TXG_WAIT);
@@ -1272,11 +1277,11 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		 */
 		if (dstlr->lr_length == UINT64_MAX) {
 			zfs_grow_blocksize(dstzp, srczp->z_blksz, tx);
-			zfs_rangelock_reduce(dstlr, 0, srczp->z_size);
+			zfs_rangelock_reduce(dstlr, dstoffset, length);
 		}
 
-		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, offset, length, tx,
-		    bps, nbps);
+		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, dstoffset, size,
+		    tx, bps, nbps);
 		kmem_free(bps, sizeof(bps[0]) * nbps);
 
 #if 0
@@ -1325,9 +1330,9 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		 * Update the file size (zp_size) if it has changed;
 		 * account for possible concurrent updates.
 		 */
-		while ((dstsize = dstzp->z_size) < offset + length) {
+		while ((dstsize = dstzp->z_size) < dstoffset + size) {
 			(void) atomic_cas_64(&dstzp->z_size, dstsize,
-			    offset + length);
+			    dstoffset + size);
 		}
 #ifdef TODO
 		/*
@@ -1342,16 +1347,18 @@ zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
 		error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
 
 #ifdef TODO
-		zfs_log_clone(zilog, tx, TX_CLONE, srczp, dstzp, offset,
-		    length);
+		zfs_log_clone(zilog, tx, TX_CLONE, srczp, srcoffset, dstzp,
+		    dstoffset, size);
 #endif
 		dmu_tx_commit(tx);
 
-		if (error == 0)
-			*donep += length;
-
 		if (error != 0)
 			break;
+
+		srcoffset += size;
+		dstoffset += size;
+		length -= size;
+		*donep += size;
 	}
 
 	zfs_znode_update_vfs(dstzp);

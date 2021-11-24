@@ -7023,3 +7023,288 @@ VFS_VOP_VECTOR_REGISTER(zfs_shareops);
 
 ZFS_MODULE_PARAM(zfs, zfs_, xattr_compat, INT, ZMOD_RW,
 	"Use legacy ZFS xattr naming for writing new user namespace xattrs");
+
+static void
+clonefile_unlock(struct clonefile_lock *cbl, struct thread *td)
+{
+
+	if (cbl->srcvnlock) {
+		VOP_UNLOCK(cbl->srcvp);
+	}
+	if (cbl->dstvnlock) {
+		VOP_UNLOCK(cbl->dstvp);
+		vn_finished_write(cbl->dstmp);
+	}
+	if (cbl->srcfp != NULL) {
+		fdrop(cbl->srcfp, td);
+	}
+	if (cbl->dstfp != NULL) {
+		fdrop(cbl->dstfp, td);
+	}
+
+	cbl->srcfp = NULL;
+	cbl->srcioflag = 0;
+	cbl->srcvp = NULL;
+	cbl->srcvnlock = B_FALSE;
+	cbl->dstfp = NULL;
+	cbl->dstioflag = 0;
+	cbl->dstvp = NULL;
+	cbl->dstvnlock = B_FALSE;
+	cbl->dstmp = NULL;
+}
+
+static int
+clonefile_get_ioflag(struct file *fp)
+{
+	int ioflag = 0;
+
+	if ((fp->f_flag & O_APPEND) != 0) {
+		ioflag |= IO_APPEND;
+	}
+	if ((fp->f_flag & FNONBLOCK) != 0) {
+		ioflag |= IO_NDELAY;
+	}
+	if ((fp->f_flag & O_DIRECT) != 0) {
+		ioflag |= IO_DIRECT;
+	}
+	if ((fp->f_flag & O_FSYNC) != 0) {
+		ioflag |= IO_SYNC;
+	}
+	if ((fp->f_flag & O_DSYNC) != 0) {
+		ioflag |= IO_SYNC | IO_DATASYNC;
+	}
+	return (ioflag);
+}
+
+static int
+clonefile_lock(int srcfd, int dstfd, struct thread *td,
+    struct clonefile_lock *cbl)
+{
+	int error;
+
+	cbl->srcfp = NULL;
+	cbl->srcioflag = 0;
+	cbl->srcvp = NULL;
+	cbl->srcvnlock = B_FALSE;
+	cbl->dstfp = NULL;
+	cbl->dstioflag = 0;
+	cbl->dstvp = NULL;
+	cbl->dstvnlock = B_FALSE;
+	cbl->dstmp = NULL;
+
+	error = fget_read(td, srcfd, &cap_read_rights, &cbl->srcfp);
+	if (error != 0) {
+		goto out;
+	}
+	error = fget_write(td, dstfd, &cap_write_rights, &cbl->dstfp);
+	if (error != 0) {
+		goto out;
+	}
+
+	cbl->srcvp = cbl->srcfp->f_vnode;
+	cbl->dstvp = cbl->dstfp->f_vnode;
+
+	if (cbl->srcvp->v_type != VREG || cbl->dstvp->v_type != VREG) {
+		error = EINVAL;
+		goto out;
+	}
+
+	if (cbl->srcvp < cbl->dstvp) {
+		error = clonefile_lock_src(cbl->srcfp, cbl->srcvp, td);
+		if (error == 0) {
+			cbl->srcvnlock = B_TRUE;
+			error = clonefile_lock_dst(cbl->dstfp, cbl->dstvp, td,
+			    &cbl->dstmp);
+			if (error == 0) {
+				cbl->dstvnlock = B_TRUE;
+			}
+		}
+	} else {
+		error = clonefile_lock_dst(cbl->dstfp, cbl->dstvp, td,
+		    &cbl->dstmp);
+		if (error == 0) {
+			cbl->dstvnlock = B_TRUE;
+			if (cbl->srcvp != cbl->dstvp) {
+				error = clonefile_lock_src(cbl->srcfp,
+				    cbl->srcvp, td);
+				if (error == 0) {
+					cbl->srcvnlock = B_TRUE;
+				}
+			}
+		}
+	}
+	if (error != 0) {
+		goto out;
+	}
+
+	cbl->srcioflag = clonefile_get_ioflag(cbl->srcfp);
+	cbl->dstioflag = clonefile_get_ioflag(cbl->dstfp);
+
+out:
+	if (error != 0) {
+		clonefile_unlock(cbl, td);
+	}
+
+	return (error);
+}
+
+static int
+kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset, int dstfd,
+    uint64_t dstoffset, uint64_t length, ssize_t *donep)
+{
+	struct clonefile_lock cbl;
+	ssize_t done;
+	int error;
+
+	*donep = 0;
+
+	error = clonefile_lock(srcfd, dstfd, td, &cbl);
+	if (error != 0) {
+		return (error);
+	}
+	if (cbl.srcvp == cbl.dstvp) {
+		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
+		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
+			clonefile_unlock(&cbl, td);
+			return (EINVAL);
+		}
+	}
+
+	/*
+	 * Check if both source and destination vnodes are on a ZFS file system.
+	 */
+	error = zfs_verify_vp(cbl.srcvp);
+	if (error == 0) {
+		error = zfs_verify_vp(cbl.dstvp);
+	}
+	if (error != 0) {
+		clonefile_unlock(&cbl, td);
+		return (error);
+	}
+
+	error = zfs_clone_range(VTOZ(cbl.srcvp), srcoffset,
+	    ioflags(cbl.srcioflag), VTOZ(cbl.dstvp), dstoffset,
+	    ioflags(cbl.dstioflag), length, td->td_ucred, &done);
+
+	clonefile_unlock(&cbl, td);
+
+	*donep = done;
+
+	return (done > 0 ? 0 : error);
+}
+
+struct fclonefile_args {
+	int64_t	srcfd;
+	int64_t	dstfd;
+};
+
+/*
+ * fclonefile(2) syscall implementation.
+ */
+static int
+sys_fclonefile(struct thread *td, void *arg)
+{
+	struct fclonefile_args *args;
+	ssize_t done;
+	int error;
+
+	args = arg;
+
+	error = kern_fclonerange(td, (int)args->srcfd, 0ULL, (int)args->dstfd,
+	    0ULL, UINT64_MAX, &done);
+
+	td->td_retval[0] = done;
+
+	return (done > 0 ? 0 : error);
+}
+
+/*
+ * The `sysent' for the new syscall
+ */
+static struct sysent fclonefile_sysent = {
+	.sy_narg = 4,
+	.sy_call = sys_fclonefile
+};
+
+/*
+ * The offset in sysent where the syscall is allocated.
+ */
+static int fclonefile_num = NO_SYSCALL;
+
+struct fclonerange_args {
+	int64_t	srcfd;
+	uint64_t srcoffset;
+	int64_t	dstfd;
+	uint64_t dstoffset;
+	uint64_t length;
+};
+
+/*
+ * fclonerange(2) syscall implementation.
+ */
+static int
+sys_fclonerange(struct thread *td, void *arg)
+{
+	struct fclonerange_args *args;
+	ssize_t done;
+	int error;
+
+	args = arg;
+
+	error = kern_fclonerange(td, (int)args->srcfd, args->srcoffset,
+	    (int)args->dstfd, args->dstoffset, args->length, &done);
+
+	td->td_retval[0] = done;
+
+	return (done > 0 ? 0 : error);
+}
+
+/*
+ * The `sysent' for the new syscall
+ */
+static struct sysent fclonerange_sysent = {
+	.sy_narg = 10,
+	.sy_call = sys_fclonerange
+};
+
+/*
+ * The offset in sysent where the syscall is allocated.
+ */
+static int fclonerange_num = NO_SYSCALL;
+
+/*
+ * The function called at load/unload.
+ */
+static int
+fclone_syscall_load(struct module *module, int cmd, void *arg)
+{
+	int error = 0;
+
+	switch (cmd) {
+	case MOD_LOAD:
+		if (arg == &fclonefile_num) {
+			printf("syscall fclonefile() loaded at %d\n",
+			    fclonefile_num);
+		} else if (arg == &fclonerange_num) {
+			printf("syscall fclonerange() loaded at %d\n",
+			    fclonerange_num);
+		}
+		break;
+	case MOD_UNLOAD:
+		if (arg == &fclonefile_num) {
+			printf("syscall fclonefile() unloaded\n");
+		} else if (arg == &fclonerange_num) {
+			printf("syscall fclonerange() unloaded\n");
+		}
+		break;
+	default :
+		error = EOPNOTSUPP;
+		break;
+	}
+	return (error);
+}
+
+SYSCALL_MODULE(fclonefile, &fclonefile_num, &fclonefile_sysent,
+    fclone_syscall_load, &fclonefile_num);
+SYSCALL_MODULE(fclonerange, &fclonerange_num, &fclonerange_sysent,
+    fclone_syscall_load, &fclonerange_num);
