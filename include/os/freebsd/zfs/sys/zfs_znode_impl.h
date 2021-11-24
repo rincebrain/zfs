@@ -118,7 +118,8 @@ typedef struct zfs_soft_state {
 
 #define	zn_has_cached_data(zp)		vn_has_cached_data(ZTOV(zp))
 #define	zn_flush_cached_data(zp, sync)	vn_flush_cached_data(ZTOV(zp), sync)
-#define	zn_rlimit_fsize(zp, uio) \
+#define	zn_rlimit_fsize(size)		zfs_rlimit_fsize(size)
+#define	zn_rlimit_fsize_uio(zp, uio) \
     vn_rlimit_fsize(ZTOV(zp), GET_UIO_STRUCT(uio), zfs_uio_td(uio))
 
 #define	ZFS_ENTER_ERROR(zfsvfs, error) do {			\
@@ -183,6 +184,8 @@ extern zil_replay_func_t *const zfs_replay_vector[TX_MAX_TYPE];
 
 extern int zfs_znode_parent_and_name(struct znode *zp, struct znode **dzpp,
     char *buf);
+
+extern int zfs_rlimit_fsize(off_t fsize);
 #ifdef	__cplusplus
 }
 #endif

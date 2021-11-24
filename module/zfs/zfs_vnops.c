@@ -50,6 +50,7 @@
 #include <sys/txg.h>
 #include <sys/dbuf.h>
 #include <sys/policy.h>
+#include <sys/zfeature.h>
 #include <sys/zfs_vnops.h>
 #include <sys/zfs_quota.h>
 #include <sys/zfs_vfsops.h>
@@ -486,7 +487,7 @@ zfs_write(znode_t *zp, zfs_uio_t *uio, int ioflag, cred_t *cr)
 		lr = zfs_rangelock_enter(&zp->z_rangelock, woff, n, RL_WRITER);
 	}
 
-	if (zn_rlimit_fsize(zp, uio)) {
+	if (zn_rlimit_fsize_uio(zp, uio)) {
 		zfs_rangelock_exit(lr);
 		ZFS_EXIT(zfsvfs);
 		return (SET_ERROR(EFBIG));

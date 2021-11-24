@@ -56,7 +56,6 @@
 #include <sys/sysproto.h>
 #include <sys/errno.h>
 #include <sys/unistd.h>
-#include <sys/resourcevar.h>
 #include <sys/zfs_dir.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/fs/zfs.h>
