@@ -979,6 +979,405 @@ zfs_get_done(zgd_t *zgd, int error)
 	kmem_free(zgd, sizeof (zgd_t));
 }
 
+static int
+zfs_enter_one(zfsvfs_t *zfsvfs)
+{
+
+	/* ZFS_ENTER() can return (EIO). */
+	ZFS_ENTER(zfsvfs);
+	return (0);
+}
+
+static int
+zfs_enter_two(zfsvfs_t *zfsvfs1, zfsvfs_t *zfsvfs2)
+{
+	int error;
+
+	/* Swap. Not sure if the order of ZFS_ENTER()s is important. */
+	if (zfsvfs1 > zfsvfs2) {
+		zfsvfs_t *tmpzfsvfs;
+
+		tmpzfsvfs = zfsvfs2;
+		zfsvfs2 = zfsvfs1;
+		zfsvfs1 = tmpzfsvfs;
+	}
+
+	error = zfs_enter_one(zfsvfs1);
+	if (error != 0) {
+		return (error);
+	}
+	if (zfsvfs1 != zfsvfs2) {
+		error = zfs_enter_one(zfsvfs2);
+		if (error != 0) {
+			ZFS_EXIT(zfsvfs1);
+			return (error);
+		}
+	}
+
+	return (0);
+}
+
+static void
+zfs_exit_two(zfsvfs_t *zfsvfs1, zfsvfs_t *zfsvfs2)
+{
+
+	ZFS_EXIT(zfsvfs1);
+	if (zfsvfs1 != zfsvfs2) {
+		ZFS_EXIT(zfsvfs2);
+	}
+}
+
+static int
+zfs_verify_zp(znode_t *zp)
+{
+
+	if (zp->z_sa_hdl == NULL) {
+		return (EIO);
+	}
+	return (0);
+}
+
+int
+zfs_clonefile(znode_t *srczp, int srcioflag, znode_t *dstzp, int dstioflag,
+    cred_t *cr, ssize_t *donep)
+{
+	zfsvfs_t	*srczfsvfs, *dstzfsvfs;
+	zfs_locked_range_t *srclr, *dstlr;
+	dmu_buf_impl_t	*db;
+	dmu_tx_t	*tx;
+	zilog_t		*zilog;
+	offset_t	offset;
+	uint64_t	length;
+	int		error;
+	int		count = 0;
+	sa_bulk_attr_t	bulk[4];
+	uint64_t	mtime[2], ctime[2];
+	uint64_t	dstsize;
+	uint64_t	uid, gid, projid;
+	blkptr_t	*bps;
+	size_t		nbps;
+	boolean_t	frsync = B_FALSE;
+
+	*donep = 0;
+
+	srczfsvfs = ZTOZSB(srczp);
+	dstzfsvfs = ZTOZSB(dstzp);
+
+	/*
+	 * We need to call ZFS_ENTER() potentially on two different datasets,
+	 * so we need a dedicated function for that.
+	 */
+	error = zfs_enter_two(srczfsvfs, dstzfsvfs);
+	if (error != 0) {
+		return (error);
+	}
+
+	/*
+	 * The ZFS_VERIFY_ZP() macro does ZFS_EXIT() on an error and a return.
+	 * We need two ZFS_EXIT()s before we return, so we need a decidated
+	 * function for that.
+	 */
+	error = zfs_verify_zp(srczp);
+	if (error == 0) {
+		error = zfs_verify_zp(dstzp);
+	}
+	if (error != 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (error);
+	}
+
+	/*
+	 * We don't copy source file's flags that's why we don't allow to clone
+	 * files that are in quarantine.
+	 */
+	if (srczp->z_pflags & ZFS_AV_QUARANTINED) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EACCES));
+	}
+
+	/*
+	 * Both source and destination have to belong to the same storage pool.
+	 */
+	if (dmu_objset_spa(srczfsvfs->z_os) !=
+	    dmu_objset_spa(dstzfsvfs->z_os)) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EXDEV));
+	}
+
+	if (!spa_feature_is_enabled(dmu_objset_spa(dstzfsvfs->z_os),
+	    SPA_FEATURE_BLOCK_CLONING)) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EOPNOTSUPP));
+	}
+
+	/*
+	 * If the source is empty there is nothing to clone, leave now.
+	 */
+	if (srczp->z_size == 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (0);
+	}
+
+	/*
+	 * Callers might not be able to detect properly that we are read-only,
+	 * so check it explicitly here.
+	 */
+	if (zfs_is_readonly(dstzfsvfs)) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EROFS));
+	}
+
+	/*
+	 * When we clone a file we expect destination to be empty.
+	 */
+	if (dstzp->z_size > 0) {
+		/* ...unless we are replying, then we can append. */
+		if (!dstzfsvfs->z_replay || dstzp->z_size > srczp->z_size) {
+			zfs_exit_two(srczfsvfs, dstzfsvfs);
+			return (SET_ERROR(ENOTEMPTY));
+		}
+	}
+
+	/*
+	 * If immutable or not appending then return EPERM.
+	 * Intentionally allow ZFS_READONLY through here.
+	 * See zfs_zaccess_common()
+	 */
+	if ((dstzp->z_pflags & ZFS_IMMUTABLE)) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EPERM));
+	}
+
+#ifdef FRSYNC
+	/*
+	 * If we're in FRSYNC mode, sync out this znode before reading it.
+	 * Only do this for non-snapshots.
+	 *
+	 * Some platforms do not support FRSYNC and instead map it
+	 * to O_SYNC, which results in unnecessary calls to zil_commit. We
+	 * only honor FRSYNC requests on platforms which support it.
+	 */
+	frsync = !!(srcioflag & FRSYNC);
+#endif
+	if (srczfsvfs->z_log &&
+	    (frsync || srczfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS))
+		zil_commit(srczfsvfs->z_log, srczp->z_id);
+
+	if (srczp < dstzp) {
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_READER);
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_WRITER);
+	} else {
+		dstlr = zfs_rangelock_enter(&dstzp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_WRITER);
+		srclr = zfs_rangelock_enter(&srczp->z_rangelock, dstzp->z_size,
+		    srczp->z_size, RL_READER);
+	}
+
+	error = zn_rlimit_fsize(srczp->z_size);
+	if (error != 0) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (error);
+	}
+
+	if (srczp->z_size >= MAXOFFSET_T) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EFBIG));
+	}
+
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(dstzfsvfs), NULL,
+	    &mtime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(dstzfsvfs), NULL,
+	    &ctime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_SIZE(dstzfsvfs), NULL,
+	    &dstzp->z_size, 8);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_FLAGS(dstzfsvfs), NULL,
+	    &dstzp->z_pflags, 8);
+
+	zilog = dstzfsvfs->z_log;
+
+	uid = KUID_TO_SUID(ZTOUID(dstzp));
+	gid = KGID_TO_SGID(ZTOGID(dstzp));
+	projid = dstzp->z_projid;
+
+	/*
+	 * Write the file in reasonable size chunks.  Each chunk is written
+	 * in a separate transaction; this keeps the intent log records small
+	 * and allows us to do more fine-grained space accounting.
+	 */
+	for (offset = dstzp->z_size; offset < srczp->z_size;
+	    offset += DMU_MAX_ACCESS) {
+		length = MIN(DMU_MAX_ACCESS, srczp->z_size - offset);
+
+		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
+		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
+		    (projid != ZFS_DEFAULT_PROJID &&
+		    zfs_id_overblockquota(dstzfsvfs, DMU_PROJECTUSED_OBJECT,
+		    projid))) {
+			zfs_exit_two(srczfsvfs, dstzfsvfs);
+			error = SET_ERROR(EDQUOT);
+			break;
+		}
+
+		/*
+		 * Start a transaction.
+		 */
+		tx = dmu_tx_create(dstzfsvfs->z_os);
+
+		error = dmu_brt_readbps(srczfsvfs->z_os, srczp->z_id, offset,
+		    length, tx, &bps, &nbps);
+		if (error != 0) {
+			dmu_tx_abort(tx);
+			break;
+		}
+		/*
+		 * Encrypted data is fine as long as it comes from the same
+		 * dataset.
+		 * TODO: We want to extend it in the future to allow cloning to
+		 * datasets with the same keys, like clones or to be able to
+		 * clone a file from a snapshot of an encrypted dataset into the
+		 * dataset itself.
+		 */
+		if (BP_IS_PROTECTED(&bps[0])) {
+			if (srczfsvfs != dstzfsvfs) {
+				dmu_tx_abort(tx);
+				kmem_free(bps, sizeof(bps[0]) * nbps);
+				error = SET_ERROR(ENODEV);
+				break;
+			}
+		}
+
+		dmu_tx_hold_sa(tx, dstzp->z_sa_hdl, B_FALSE);
+		db = (dmu_buf_impl_t *)sa_get_db(dstzp->z_sa_hdl);
+		DB_DNODE_ENTER(db);
+		dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), offset, length);
+		DB_DNODE_EXIT(db);
+		zfs_sa_upgrade_txholds(tx, dstzp);
+		error = dmu_tx_assign(tx, TXG_WAIT);
+		if (error != 0) {
+			dmu_tx_abort(tx);
+			kmem_free(bps, sizeof(bps[0]) * nbps);
+			break;
+		}
+
+		/*
+		 * Copy source znode's block size. This only happens on the
+		 * first iteration since zfs_rangelock_reduce() will shrink down
+		 * lr_length to the appropriate size.
+		 */
+		if (dstlr->lr_length == UINT64_MAX) {
+			zfs_grow_blocksize(dstzp, srczp->z_blksz, tx);
+			zfs_rangelock_reduce(dstlr, 0, srczp->z_size);
+		}
+
+		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, offset, length, tx,
+		    bps, nbps);
+		kmem_free(bps, sizeof(bps[0]) * nbps);
+
+#if 0
+		/*
+		 * If we made no progress, we're done.  If we made even
+		 * partial progress, update the znode and ZIL accordingly.
+		 */
+		if (tx_bytes == 0) {
+			(void) sa_update(dstzp->z_sa_hdl, SA_ZPL_SIZE(dstzfsvfs),
+			    (void *)&dstzp->z_size, sizeof (uint64_t), tx);
+			dmu_tx_commit(tx);
+			ASSERT(error != 0);
+			break;
+		}
+#endif
+
+		/*
+		 * Clear Set-UID/Set-GID bits on successful write if not
+		 * privileged and at least one of the excute bits is set.
+		 *
+		 * It would be nice to to this after all writes have
+		 * been done, but that would still expose the ISUID/ISGID
+		 * to another app after the partial write is committed.
+		 *
+		 * Note: we don't call zfs_fuid_map_id() here because
+		 * user 0 is not an ephemeral uid.
+		 */
+		mutex_enter(&dstzp->z_acl_lock);
+		if ((dstzp->z_mode & (S_IXUSR | (S_IXUSR >> 3) |
+		    (S_IXUSR >> 6))) != 0 &&
+		    (dstzp->z_mode & (S_ISUID | S_ISGID)) != 0 &&
+		    secpolicy_vnode_setid_retain(dstzp, cr,
+		    (dstzp->z_mode & S_ISUID) != 0 && dstzp->z_uid == 0) != 0) {
+			uint64_t newmode;
+			dstzp->z_mode &= ~(S_ISUID | S_ISGID);
+			newmode = dstzp->z_mode;
+			(void) sa_update(dstzp->z_sa_hdl,
+			    SA_ZPL_MODE(dstzfsvfs), (void *)&newmode,
+			    sizeof (uint64_t), tx);
+		}
+		mutex_exit(&dstzp->z_acl_lock);
+
+		zfs_tstamp_update_setup(dstzp, CONTENT_MODIFIED, mtime, ctime);
+
+		/*
+		 * Update the file size (zp_size) if it has changed;
+		 * account for possible concurrent updates.
+		 */
+		while ((dstsize = dstzp->z_size) < offset + length) {
+			(void) atomic_cas_64(&dstzp->z_size, dstsize,
+			    offset + length);
+		}
+#ifdef TODO
+		/*
+		 * If we are replaying and eof is non zero then force
+		 * the file size to the specified eof. Note, there's no
+		 * concurrency during replay.
+		 */
+		if (dstzfsvfs->z_replay && dstzfsvfs->z_replay_eof != 0)
+			dstzp->z_size = dstzfsvfs->z_replay_eof;
+#endif
+
+		error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
+
+#ifdef TODO
+		zfs_log_clone(zilog, tx, TX_CLONE, srczp, dstzp, offset,
+		    length);
+#endif
+		dmu_tx_commit(tx);
+
+		if (error == 0)
+			*donep += length;
+
+		if (error != 0)
+			break;
+	}
+
+	zfs_znode_update_vfs(dstzp);
+	zfs_rangelock_exit(dstlr);
+	zfs_rangelock_exit(srclr);
+
+	/*
+	 * If we're in replay mode, or we made no progress, return error.
+	 * Otherwise, it's at least a partial write, so it's successful.
+	 */
+	if (dstzfsvfs->z_replay || *donep == 0) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (error);
+	}
+
+	if (dstioflag & (FSYNC | FDSYNC) ||
+	    dstzfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
+		zil_commit(zilog, dstzp->z_id);
+
+	if (!dstzfsvfs->z_replay)
+		ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
+	zfs_exit_two(srczfsvfs, dstzfsvfs);
+
+	return (0);
+}
+
 EXPORT_SYMBOL(zfs_access);
 EXPORT_SYMBOL(zfs_fsync);
 EXPORT_SYMBOL(zfs_holey);

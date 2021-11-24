@@ -31,6 +31,7 @@ extern int zfs_read(znode_t *, zfs_uio_t *, int, cred_t *);
 extern int zfs_write(znode_t *, zfs_uio_t *, int, cred_t *);
 extern int zfs_holey(znode_t *, ulong_t, loff_t *);
 extern int zfs_access(znode_t *, int, int, cred_t *);
+extern int zfs_clonefile(znode_t *, int, znode_t *, int, cred_t *, ssize_t *);
 
 extern int zfs_getsecattr(znode_t *, vsecattr_t *, int, cred_t *);
 extern int zfs_setsecattr(znode_t *, vsecattr_t *, int, cred_t *);
