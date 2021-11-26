@@ -255,6 +255,7 @@ extern unsigned long zfs_deadman_synctime_ms;
 extern int metaslab_preload_limit;
 extern boolean_t zfs_compressed_arc_enabled;
 extern int zfs_abd_scatter_enabled;
+extern int zfs_abd_scatter_min_size;
 extern int dmu_object_alloc_chunk_shift;
 extern boolean_t zfs_force_some_double_word_sm_entries;
 extern unsigned long zio_decompress_fail_fraction;
@@ -7974,6 +7975,7 @@ main(int argc, char **argv)
 	dprintf_setup(&argc, argv);
 	zfs_deadman_synctime_ms = 300000;
 	zfs_deadman_checktime_ms = 30000;
+	zfs_abd_scatter_min_size = 4097; // test
 	/*
 	 * As two-word space map entries may not come up often (especially
 	 * if pool and vdev sizes are small) we want to force at least some
