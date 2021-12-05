@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
- * Copyright (c) 2020, Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
+ * Copyright (c) 2020, 2021, Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -1263,14 +1263,14 @@ brt_sync_entry(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx, uint64_t txg)
 		error = brt_object_remove(brt, bre, tx);
 		ASSERT(error == 0 || error == ENOENT);
 		/*
-		 * If error == ENOENT then clonefile(2) was done from a removed
+		 * If error == ENOENT then fclonefile(2) was done from a removed
 		 * (but opened) file (open(), unlink()).
 		 */
 		ASSERT(brt_object_lookup(brt, bre) == ENOENT);
 	} else {
 		if (!brt_object_exists(brt))
 			brt_object_create(brt, tx);
-		VERIFY(brt_object_update(brt, bre, tx) == 0);
+		VERIFY0(brt_object_update(brt, bre, tx));
 	}
 }
 
@@ -1291,7 +1291,7 @@ brt_sync_table(brt_t *brt, dmu_tx_t *tx, uint64_t txg)
 	if (brt_object_exists(brt)) {
 		uint64_t count;
 
-		VERIFY(brt_object_count(brt, &count) == 0);
+		VERIFY0(brt_object_count(brt, &count));
 		if (count == 0)
 			brt_object_destroy(brt, tx);
 	}
