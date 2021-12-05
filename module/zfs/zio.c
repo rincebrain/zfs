@@ -3336,7 +3336,6 @@ zio_ddt_write(zio_t *zio)
 	ddt_phys_t *ddp;
 
 	ASSERT(BP_GET_DEDUP(bp));
-	ASSERT(BP_GET_LEVEL(bp) == 0);
 	ASSERT(BP_GET_CHECKSUM(bp) == zp->zp_checksum);
 	ASSERT(BP_IS_HOLE(bp) || zio->io_bp_override);
 	ASSERT(!(zio->io_bp_override && (zio->io_flags & ZIO_FLAG_RAW)));

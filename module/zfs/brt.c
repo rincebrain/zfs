@@ -52,7 +52,7 @@
 #define	BRT_RANGE_CHUNK	(1024 * 1024 * 1024)
 /*
  * We don't want to update the whole structure every time. Maintain bitmap
- * of dirty blocks within the regions, so that single bit represents a
+ * of dirty blocks within the regions, so that a single bit represents a
  * block size of refcounts. For example if we have a 64TB vdev then all
  * refcounts take 512kB of memory. If the block size is 4kB then we want to
  * have 128 separate dirty bits. Each bit will represent change in one
@@ -79,7 +79,8 @@ typedef struct brt_vdev {
 	 */
 	uint64_t	bv_size;
 	/*
-	 * This is the array with all the refcounts (one refcount per 1GB).
+	 * This is the array with all the refcounts
+	 * (one refcount per BRT_RANGE_CHUNK).
 	 */
 	uint64_t	*bv_refcount;
 	/*
@@ -307,6 +308,7 @@ brt_phys_total_refcnt(const brt_entry_t *bre)
 	return (bre->bre_phys.brp_refcnt);
 }
 
+#ifdef ZFS_BRT_DEBUG
 static void
 brt_vdev_dump(brt_t *brt)
 {
@@ -323,14 +325,18 @@ brt_vdev_dump(brt_t *brt)
 		uint64_t idx;
 
 		brtvd = &brt->brt_vdevs[vdevid];
-		printf("[vdevid=%ju/%ju] dirty=%d size=%ju count=%ju nblocks=%ju bitmapsize=%ju\n", (uintmax_t)vdevid, (uintmax_t)brtvd->bv_vdev, brtvd->bv_dirty, (uintmax_t)brtvd->bv_size, (uintmax_t)brtvd->bv_count, (uintmax_t)brtvd->bv_nblocks, (uintmax_t)BT_SIZEOFMAP(brtvd->bv_nblocks));
-		if (!brtvd->bv_dirty) {
+		printf("[vdevid=%ju/%ju] dirty=%d size=%ju count=%ju nblocks=%ju bitmapsize=%ju\n",
+		    (uintmax_t)vdevid, (uintmax_t)brtvd->bv_vdev,
+		    brtvd->bv_dirty, (uintmax_t)brtvd->bv_size,
+		    (uintmax_t)brtvd->bv_count, (uintmax_t)brtvd->bv_nblocks,
+		    (uintmax_t)BT_SIZEOFMAP(brtvd->bv_nblocks));
+		if (!brtvd->bv_dirty)
 			continue;
-		}
 		printf("refcounts:\n");
 		for (idx = 0; idx < brtvd->bv_size; idx++) {
 			if (brtvd->bv_refcount[idx] > 0) {
-				printf("  [%04ju] %ju\n", (uintmax_t)idx, (uintmax_t)brtvd->bv_refcount[idx]);
+				printf("  [%04ju] %ju\n", (uintmax_t)idx,
+				    (uintmax_t)brtvd->bv_refcount[idx]);
 			}
 		}
 		printf("bitmap: ");
@@ -340,6 +346,7 @@ brt_vdev_dump(brt_t *brt)
 		printf("\n");
 	}
 }
+#endif
 
 static void
 brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
@@ -548,8 +555,7 @@ brt_expand_vdevs(brt_t *brt, uint64_t nvdevs)
 static boolean_t
 brt_vdev_lookup(brt_t *brt, const brt_entry_t *bre)
 {
-	brt_vdev_t *brtvd;
-	uint64_t vdevid, idx;
+	uint64_t vdevid;
 	boolean_t found, unlock;
 
 	if (!MUTEX_HELD(&brt->brt_lock)) {
@@ -562,19 +568,19 @@ brt_vdev_lookup(brt_t *brt, const brt_entry_t *bre)
 	found = FALSE;
 
 	vdevid = bre->bre_key.brk_vdev;
-	idx = bre->bre_key.brk_offset / BRT_RANGE_CHUNK;
+	if (vdevid < brt->brt_nvdevs) {
+		brt_vdev_t *brtvd;
+		uint64_t idx;
 
-	if (vdevid >= brt->brt_nvdevs)
-		goto out;
-
-	brtvd = &brt->brt_vdevs[vdevid];
-	if (brtvd->bv_refcount == NULL || idx >= brtvd->bv_size) {
-		/* VDEV must have been expanded. */
-		goto out;
+		/* We know this VDEV. */
+		brtvd = &brt->brt_vdevs[vdevid];
+		idx = bre->bre_key.brk_offset / BRT_RANGE_CHUNK;
+		if (brtvd->bv_refcount != NULL && idx < brtvd->bv_size) {
+			/* VDEV wasn't expanded. */
+			found = brtvd->bv_refcount[idx] > 0;
+		}
 	}
 
-	found = brtvd->bv_refcount[idx] > 0;
-out:
 	if (unlock)
 		brt_exit(brt);
 
@@ -600,7 +606,7 @@ brt_vdev_addref(brt_t *brt, const brt_entry_t *bre, uint64_t dsize)
 
 	brtvd = &brt->brt_vdevs[vdevid];
 	if (brtvd->bv_refcount == NULL || idx >= brtvd->bv_size) {
-		/* VDEV not allocated/loaded yet or was been expanded. */
+		/* VDEV not allocated/loaded yet or has been expanded. */
 		brt_vdev_realloc(brt, brtvd);
 	}
 
@@ -618,7 +624,9 @@ brt_vdev_addref(brt_t *brt, const brt_entry_t *bre, uint64_t dsize)
 		brtvd->bv_drefsize += dsize;
 		brt->brt_drefsize += dsize;
 	}
-brt_vdev_dump(brt);
+#ifdef ZFS_BRT_DEBUG
+	brt_vdev_dump(brt);
+#endif
 }
 
 static void
@@ -652,7 +660,9 @@ brt_vdev_decref(brt_t *brt, const brt_entry_t *bre, uint64_t dsize)
 		brtvd->bv_drefsize -= dsize;
 		brt->brt_drefsize -= dsize;
 	}
-brt_vdev_dump(brt);
+#ifdef ZFS_BRT_DEBUG
+	brt_vdev_dump(brt);
+#endif
 }
 
 static void

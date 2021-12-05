@@ -1003,9 +1003,8 @@ zfs_enter_two(zfsvfs_t *zfsvfs1, zfsvfs_t *zfsvfs2)
 	}
 
 	error = zfs_enter_one(zfsvfs1);
-	if (error != 0) {
+	if (error != 0)
 		return (error);
-	}
 	if (zfsvfs1 != zfsvfs2) {
 		error = zfs_enter_one(zfsvfs2);
 		if (error != 0) {
@@ -1022,18 +1021,16 @@ zfs_exit_two(zfsvfs_t *zfsvfs1, zfsvfs_t *zfsvfs2)
 {
 
 	ZFS_EXIT(zfsvfs1);
-	if (zfsvfs1 != zfsvfs2) {
+	if (zfsvfs1 != zfsvfs2)
 		ZFS_EXIT(zfsvfs2);
-	}
 }
 
 static int
 zfs_verify_zp(znode_t *zp)
 {
 
-	if (zp->z_sa_hdl == NULL) {
+	if (zp->z_sa_hdl == NULL)
 		return (EIO);
-	}
 	return (0);
 }
 
@@ -1067,9 +1064,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	 * so we need a dedicated function for that.
 	 */
 	error = zfs_enter_two(srczfsvfs, dstzfsvfs);
-	if (error != 0) {
+	if (error != 0)
 		return (error);
-	}
 
 	/*
 	 * The ZFS_VERIFY_ZP() macro does ZFS_EXIT() on an error and a return.
@@ -1077,9 +1073,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	 * function for that.
 	 */
 	error = zfs_verify_zp(srczp);
-	if (error == 0) {
+	if (error == 0)
 		error = zfs_verify_zp(dstzp);
-	}
 	if (error != 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (error);
@@ -1117,9 +1112,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (0);
 	}
-	if (length == UINT64_MAX) {
+	if (length == UINT64_MAX)
 		length = srczp->z_size - srcoffset;
-	}
 
 	if ((srcoffset % DMU_MAX_ACCESS) != 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
@@ -1166,8 +1160,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	frsync = !!(srcioflag & FRSYNC);
 #endif
 	if (srczfsvfs->z_log &&
-	    (frsync || srczfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS))
+	    (frsync || srczfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)) {
 		zil_commit(srczfsvfs->z_log, srczp->z_id);
+	}
 
 	if (srczp < dstzp) {
 		srclr = zfs_rangelock_enter(&srczp->z_rangelock, srcoffset,
@@ -1284,20 +1279,6 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		    tx, bps, nbps);
 		kmem_free(bps, sizeof(bps[0]) * nbps);
 
-#if 0
-		/*
-		 * If we made no progress, we're done.  If we made even
-		 * partial progress, update the znode and ZIL accordingly.
-		 */
-		if (tx_bytes == 0) {
-			(void) sa_update(dstzp->z_sa_hdl, SA_ZPL_SIZE(dstzfsvfs),
-			    (void *)&dstzp->z_size, sizeof (uint64_t), tx);
-			dmu_tx_commit(tx);
-			ASSERT(error != 0);
-			break;
-		}
-#endif
-
 		/*
 		 * Clear Set-UID/Set-GID bits on successful write if not
 		 * privileged and at least one of the excute bits is set.
@@ -1375,8 +1356,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	}
 
 	if (dstioflag & (FSYNC | FDSYNC) ||
-	    dstzfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
+	    dstzfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS) {
 		zil_commit(zilog, dstzp->z_id);
+	}
 
 	if (!dstzfsvfs->z_replay)
 		ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
