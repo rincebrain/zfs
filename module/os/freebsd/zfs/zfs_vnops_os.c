@@ -6026,7 +6026,6 @@ struct vop_getextattr {
 static int
 zfs_getextattr_dir(struct vop_getextattr_args *ap, const char *attrname)
 {
-	struct thread *td = ap->a_td;
 	struct nameidata nd;
 	struct vattr va;
 	vnode_t *xvp = NULL, *vp;
@@ -6058,7 +6057,7 @@ zfs_getextattr_dir(struct vop_getextattr_args *ap, const char *attrname)
 		error = VOP_READ(vp, ap->a_uio, IO_UNIT, ap->a_cred);
 
 	VOP_UNLOCK1(vp);
-	vn_close(vp, flags, ap->a_cred, td);
+	vn_close(vp, flags, ap->a_cred, ap->a_td);
 	return (error);
 }
 
@@ -6316,7 +6315,6 @@ struct vop_setextattr {
 static int
 zfs_setextattr_dir(struct vop_setextattr_args *ap, const char *attrname)
 {
-	struct thread *td = ap->a_td;
 	struct nameidata nd;
 	struct vattr va;
 	vnode_t *xvp = NULL, *vp;
@@ -6347,7 +6345,7 @@ zfs_setextattr_dir(struct vop_setextattr_args *ap, const char *attrname)
 		VOP_WRITE(vp, ap->a_uio, IO_UNIT, ap->a_cred);
 
 	VOP_UNLOCK1(vp);
-	vn_close(vp, flags, ap->a_cred, td);
+	vn_close(vp, flags, ap->a_cred, ap->a_td);
 	return (error);
 }
 
