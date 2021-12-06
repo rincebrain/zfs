@@ -2208,7 +2208,7 @@ dmu_brt_addref(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 	int numbufs;
 	uint_t ii;
 
-	VERIFY(0 == dmu_buf_hold_array(os, object, offset, length, FALSE, FTAG,
+	VERIFY0(dmu_buf_hold_array(os, object, offset, length, FALSE, FTAG,
 	    &numbufs, &dbp));
 	ASSERT3U(nbps, ==, numbufs);
 
