@@ -1116,6 +1116,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	if (length == UINT64_MAX)
 		length = srczp->z_size - srcoffset;
 
+	/*
+	 * This could be relaxed in the future, as we only need offset and
+	 * length to be multiple of block size, not DMU_MAX_ACCESS.
+	 */
 	if ((srcoffset % DMU_MAX_ACCESS) != 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EINVAL));
@@ -1208,7 +1212,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	projid = dstzp->z_projid;
 
 	/*
-	 * Write the file in reasonable size chunks.  Each chunk is written
+	 * Clone the file in reasonable size chunks.  Each chunk is cloned
 	 * in a separate transaction; this keeps the intent log records small
 	 * and allows us to do more fine-grained space accounting.
 	 */
@@ -1284,9 +1288,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		 * Clear Set-UID/Set-GID bits on successful write if not
 		 * privileged and at least one of the excute bits is set.
 		 *
-		 * It would be nice to to this after all writes have
+		 * It would be nice to to this after all clones have
 		 * been done, but that would still expose the ISUID/ISGID
-		 * to another app after the partial write is committed.
+		 * to another app after the partial clone is committed.
 		 *
 		 * Note: we don't call zfs_fuid_map_id() here because
 		 * user 0 is not an ephemeral uid.

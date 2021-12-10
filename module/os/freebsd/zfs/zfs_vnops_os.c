@@ -7129,6 +7129,9 @@ clonefile_lock(int srcfd, int dstfd, struct thread *td,
 		goto out;
 	}
 
+	/*
+	 * Avoid lock order reversal.
+	 */
 	if (cbl->srcvp < cbl->dstvp) {
 		error = clonefile_lock_src(cbl->srcfp, cbl->srcvp, td);
 		if (error == 0) {
@@ -7182,13 +7185,6 @@ kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset, int dstfd,
 	if (error != 0) {
 		return (error);
 	}
-	if (cbl.srcvp == cbl.dstvp) {
-		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
-		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
-			clonefile_unlock(&cbl, td);
-			return (EINVAL);
-		}
-	}
 
 	/*
 	 * Check if both source and destination vnodes are on a ZFS file system.
@@ -7200,6 +7196,21 @@ kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset, int dstfd,
 	if (error != 0) {
 		clonefile_unlock(&cbl, td);
 		return (error);
+	}
+
+	/*
+	 * TODO: Make sure offsets and length are at block boundaries.
+	 */
+
+	if (cbl.srcvp == cbl.dstvp) {
+		/*
+		 * No overlapping if we are cloning within the same file.
+		 */
+		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
+		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
+			clonefile_unlock(&cbl, td);
+			return (EINVAL);
+		}
 	}
 
 	error = zfs_clone_range(VTOZ(cbl.srcvp), srcoffset,
