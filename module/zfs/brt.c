@@ -122,7 +122,8 @@ typedef struct brt {
 	uint64_t	brt_blocksize;
 	uint64_t	brt_drefsize;
 	uint64_t	brt_dsize;
-	list_t		brt_pending;
+	list_t		brt_pending_list[TXG_SIZE];
+	kmutex_t	brt_pending_lock[TXG_SIZE];
 	brt_vdev_t	*brt_vdevs;
 	uint64_t	brt_nvdevs;
 } brt_t;
@@ -933,10 +934,11 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	avl_index_t where;
 	int error;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(!MUTEX_HELD(&brt->brt_lock));
 
 	brt_key_fill(&brk, bp);
 
+	brt_enter(brt);
 	bre = avl_find(&brt->brt_tree, &brk, NULL);
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_addref_entry_in_memory);
@@ -965,6 +967,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	}
 	brt_phys_addref(&bre->bre_phys);
 	brt_vdev_addref(brt, bre, bp_get_dsize(brt->brt_spa, bp));
+	brt_exit(brt);
 }
 
 /* Return TRUE if block should be freed immediately. */
@@ -1062,17 +1065,19 @@ brt_pending_add(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
 {
 	brt_t *brt;
 	brt_pending_entry_t *bpe;
+	uint64_t txg;
 
 	brt = spa->spa_brt;
+	txg = dmu_tx_get_txg(tx);
+	ASSERT3U(txg, !=, 0);
 
 	bpe = kmem_cache_alloc(brt_pending_entry_cache, KM_SLEEP);
-	bpe->bpe_txg = dmu_tx_get_txg(tx);
-	ASSERT3U(bpe->bpe_txg, !=, 0);
+	bpe->bpe_txg = txg;
 	bpe->bpe_bp = *bp;
 
-	brt_enter(brt);
-	list_insert_tail(&brt->brt_pending, bpe);
-	brt_exit(brt);
+	mutex_enter(&brt->brt_pending_lock[txg & TXG_MASK]);
+	list_insert_tail(&brt->brt_pending_list[txg & TXG_MASK], bpe);
+	mutex_exit(&brt->brt_pending_lock[txg & TXG_MASK]);
 
 	/* Prefetch BRT entry, as we will need it in the syncing context. */
 	brt_prefetch(brt, bp);
@@ -1129,29 +1134,28 @@ brt_pending_apply(spa_t *spa, uint64_t txg)
 {
 	brt_t *brt;
 	brt_pending_entry_t *bpe;
+	list_t *pending_list;
+	kmutex_t *pending_lock;
 
 	ASSERT3U(txg, !=, 0);
 
 	brt = spa->spa_brt;
+	pending_list = &brt->brt_pending_list[txg & TXG_MASK];
+	pending_lock = &brt->brt_pending_lock[txg & TXG_MASK];
 
-	brt_enter(brt);
-	while ((bpe = list_head(&brt->brt_pending)) != NULL) {
+	mutex_enter(pending_lock);
+	while ((bpe = list_head(pending_list)) != NULL) {
 		boolean_t added_to_ddt;
 
-		ASSERT3U(txg, <=, bpe->bpe_txg);
+		ASSERT3U(txg, ==, bpe->bpe_txg);
 
-		if (txg < bpe->bpe_txg)
-			break;
-
-		list_remove(&brt->brt_pending, bpe);
+		list_remove(pending_list, bpe);
+		mutex_exit(pending_lock);
 
 		/*
 		 * If the block has DEDUP bit set, it means that it already
 		 * exists in the DEDUP table, so we can just use that instead
 		 * of creating new entry in the BRT table.
-		 *
-		 * The functions below will drop the BRT lock, but this is fine,
-		 * because on the next iteration we start from the list head.
 		 */
 		if (BP_GET_DEDUP(&bpe->bpe_bp))
 			added_to_ddt = brt_add_to_ddt(spa, &bpe->bpe_bp);
@@ -1161,8 +1165,9 @@ brt_pending_apply(spa_t *spa, uint64_t txg)
 			brt_entry_addref(brt, &bpe->bpe_bp);
 
 		kmem_cache_free(brt_pending_entry_cache, bpe);
+		mutex_enter(pending_lock);
 	}
-	brt_exit(brt);
+	mutex_exit(pending_lock);
 }
 
 static int
@@ -1189,17 +1194,31 @@ brt_entry_compare(const void *x1, const void *x2)
 static void
 brt_table_alloc(brt_t *brt)
 {
-	list_create(&brt->brt_pending, sizeof (brt_pending_entry_t),
-	    offsetof(brt_pending_entry_t, bpe_node));
+	int i;
+
 	avl_create(&brt->brt_tree, brt_entry_compare,
 	    sizeof (brt_entry_t), offsetof(brt_entry_t, bre_node));
+	for (i = 0; i < TXG_SIZE; i++) {
+		list_create(&brt->brt_pending_list[i],
+		    sizeof (brt_pending_entry_t),
+		    offsetof(brt_pending_entry_t, bpe_node));
+		mutex_init(&brt->brt_pending_lock[i], NULL, MUTEX_DEFAULT,
+		    NULL);
+	}
 }
 
 static void
 brt_table_free(brt_t *brt)
 {
+	int i;
+
 	ASSERT(avl_numnodes(&brt->brt_tree) == 0);
 	avl_destroy(&brt->brt_tree);
+	for (i = 0; i < TXG_SIZE; i++) {
+		ASSERT(list_is_empty(&brt->brt_pending_list[i]));
+		list_destroy(&brt->brt_pending_list[i]);
+		mutex_destroy(&brt->brt_pending_lock[i]);
+	}
 }
 
 void
