@@ -1224,7 +1224,6 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		    (projid != ZFS_DEFAULT_PROJID &&
 		    zfs_id_overblockquota(dstzfsvfs, DMU_PROJECTUSED_OBJECT,
 		    projid))) {
-			zfs_exit_two(srczfsvfs, dstzfsvfs);
 			error = SET_ERROR(EDQUOT);
 			break;
 		}
