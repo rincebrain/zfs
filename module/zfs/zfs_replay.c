@@ -1043,6 +1043,27 @@ zfs_replay_acl(void *arg1, void *arg2, boolean_t byteswap)
 	return (error);
 }
 
+static int
+zfs_replay_clone(void *arg1, void *arg2, boolean_t byteswap)
+{
+	zfsvfs_t *zfsvfs = arg1;
+	lr_clone_t *lr = arg2;
+	znode_t *zp;
+	int error;
+
+	if (byteswap)
+		byteswap_uint64_array(lr, sizeof (*lr));
+
+	if ((error = zfs_zget(zfsvfs, lr->lr_foid, &zp)) != 0)
+		return (error);
+
+	error = zfs_clone_range_replay(zp, lr->lr_offset, lr->lr_length,
+	    lr->lr_blksz, lr->lr_bps, lr->lr_nbps);
+
+	zrele(zp);
+	return (error);
+}
+
 /*
  * Callback vectors for replaying records
  */
@@ -1069,4 +1090,5 @@ zil_replay_func_t *const zfs_replay_vector[TX_MAX_TYPE] = {
 	zfs_replay_create_acl,	/* TX_MKDIR_ACL_ATTR */
 	zfs_replay_write2,	/* TX_WRITE2 */
 	zfs_replay_setsaxattr,	/* TX_SETSAXATTR */
+	zfs_replay_clone,	/* TX_CLONE */
 };

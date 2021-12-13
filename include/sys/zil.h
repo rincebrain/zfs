@@ -163,7 +163,8 @@ typedef enum zil_create {
 #define	TX_MKDIR_ACL_ATTR	19	/* mkdir with ACL + attrs */
 #define	TX_WRITE2		20	/* dmu_sync EALREADY write */
 #define	TX_SETSAXATTR		21	/* Set sa xattrs on file */
-#define	TX_MAX_TYPE		22	/* Max transaction type */
+#define	TX_CLONE		22	/* Clone a file range */
+#define	TX_MAX_TYPE		23	/* Max transaction type */
 
 /*
  * The transactions for mkdir, symlink, remove, rmdir, link, and rename
@@ -361,6 +362,17 @@ typedef struct {
 	uint64_t	lr_acl_flags;	/* ACL flags */
 	/* lr_acl_bytes number of variable sized ace's follows */
 } lr_acl_t;
+
+typedef struct {
+	lr_t		lr_common;	/* common portion of log record */
+	uint64_t	lr_foid;	/* file object to clone into */
+	uint64_t	lr_offset;	/* offset to clone to */
+	uint64_t	lr_length;	/* length of the blocks to clone */
+	uint64_t	lr_blksz;	/* file's block size */
+	uint64_t	lr_nbps;	/* number of block pointers */
+	blkptr_t	lr_bps[];
+	/* block pointers of the blocks to clone follows */
+} lr_clone_t;
 
 /*
  * ZIL structure definitions, interface function prototype and globals.

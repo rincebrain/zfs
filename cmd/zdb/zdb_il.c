@@ -329,6 +329,7 @@ static zil_rec_info_t zil_rec_info[TX_MAX_TYPE] = {
 	{.zri_print = zil_prt_rec_write,    .zri_name = "TX_WRITE2          "},
 	{.zri_print = zil_prt_rec_setsaxattr,
 	    .zri_name = "TX_SETSAXATTR      "},
+	{.zri_print = zil_prt_rec_clone,    .zri_name = "TX_CLONE           "},
 };
 
 static int

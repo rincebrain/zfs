@@ -1035,6 +1035,8 @@ zfs_verify_zp(znode_t *zp)
 	return (0);
 }
 
+#define	BRT_CHUNK_SIZE	(DMU_MAX_ACCESS / 2)
+
 int
 zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
     znode_t *dstzp, uint64_t dstoffset, int dstioflag, uint64_t length,
@@ -1067,6 +1069,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	error = zfs_enter_two(srczfsvfs, dstzfsvfs);
 	if (error != 0)
 		return (error);
+
+	ASSERT(!dstzfsvfs->z_replay);
 
 	/*
 	 * The ZFS_VERIFY_ZP() macro does ZFS_EXIT() on an error and a return.
@@ -1118,17 +1122,17 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 
 	/*
 	 * This could be relaxed in the future, as we only need offset and
-	 * length to be multiple of block size, not DMU_MAX_ACCESS.
+	 * length to be multiple of block size, not BRT_CHUNK_SIZE.
 	 */
-	if ((srcoffset % DMU_MAX_ACCESS) != 0) {
+	if ((srcoffset % BRT_CHUNK_SIZE) != 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EINVAL));
 	}
-	if ((dstoffset % DMU_MAX_ACCESS) != 0) {
+	if ((dstoffset % BRT_CHUNK_SIZE) != 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EINVAL));
 	}
-	if ((length % DMU_MAX_ACCESS) != 0 &&
+	if ((length % BRT_CHUNK_SIZE) != 0 &&
 	    length != srczp->z_size - srcoffset) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EINVAL));
@@ -1217,7 +1221,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	 * and allows us to do more fine-grained space accounting.
 	 */
 	while (length > 0) {
-		size = MIN(DMU_MAX_ACCESS, length);
+		size = MIN(BRT_CHUNK_SIZE, length);
 
 		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
 		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
@@ -1281,7 +1285,6 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 
 		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, dstoffset, size,
 		    tx, bps, nbps);
-		kmem_free(bps, sizeof(bps[0]) * nbps);
 
 		/*
 		 * Clear Set-UID/Set-GID bits on successful write if not
@@ -1319,23 +1322,14 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 			(void) atomic_cas_64(&dstzp->z_size, dstsize,
 			    dstoffset + size);
 		}
-#ifdef TODO
-		/*
-		 * If we are replaying and eof is non zero then force
-		 * the file size to the specified eof. Note, there's no
-		 * concurrency during replay.
-		 */
-		if (dstzfsvfs->z_replay && dstzfsvfs->z_replay_eof != 0)
-			dstzp->z_size = dstzfsvfs->z_replay_eof;
-#endif
 
 		error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
 
-#ifdef TODO
-		zfs_log_clone(zilog, tx, TX_CLONE, srczp, srcoffset, dstzp,
-		    dstoffset, size);
-#endif
+		zfs_log_clone(zilog, tx, TX_CLONE, dstzp, dstioflag, dstoffset,
+		    size, srczp->z_blksz, bps, nbps);
 		dmu_tx_commit(tx);
+
+		kmem_free(bps, sizeof(bps[0]) * nbps);
 
 		if (error != 0)
 			break;
@@ -1351,10 +1345,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	zfs_rangelock_exit(srclr);
 
 	/*
-	 * If we're in replay mode, or we made no progress, return error.
+	 * If we made no progress, return error.
 	 * Otherwise, it's at least a partial write, so it's successful.
 	 */
-	if (dstzfsvfs->z_replay || *donep == 0) {
+	if (*donep == 0) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (error);
 	}
@@ -1364,11 +1358,114 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		zil_commit(zilog, dstzp->z_id);
 	}
 
-	if (!dstzfsvfs->z_replay)
-		ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
+	ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
 	zfs_exit_two(srczfsvfs, dstzfsvfs);
 
 	return (0);
+}
+
+int
+zfs_clone_range_replay(znode_t *zp, uint64_t offset, uint64_t length,
+    uint64_t blksz, const blkptr_t *bps, size_t nbps)
+{
+	zfsvfs_t	*zfsvfs;
+	dmu_buf_impl_t	*db;
+	dmu_tx_t	*tx;
+	int		error;
+	int		count = 0;
+	sa_bulk_attr_t	bulk[4];
+	uint64_t	mtime[2], ctime[2];
+
+	ASSERT3U(offset, <, MAXOFFSET_T);
+	ASSERT3U(length, >, 0);
+	ASSERT3U(nbps, >, 0);
+
+	zfsvfs = ZTOZSB(zp);
+
+	ZFS_ENTER(zfsvfs);
+	ZFS_VERIFY_ZP(zp);
+
+	ASSERT(zfsvfs->z_replay);
+
+	if (!spa_feature_is_enabled(dmu_objset_spa(zfsvfs->z_os),
+	    SPA_FEATURE_BLOCK_CLONING)) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EOPNOTSUPP));
+	}
+
+	/*
+	 * This could be relaxed in the future, as we only need offset and
+	 * length to be multiple of block size, not BRT_CHUNK_SIZE.
+	 */
+	if ((offset % BRT_CHUNK_SIZE) != 0) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EINVAL));
+	}
+
+#if 0
+	/*
+	 * Callers might not be able to detect properly that we are read-only,
+	 * so check it explicitly here.
+	 */
+	if (zfs_is_readonly(zfsvfs)) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EROFS));
+	}
+
+	/*
+	 * If immutable or not appending then return EPERM.
+	 * Intentionally allow ZFS_READONLY through here.
+	 * See zfs_zaccess_common()
+	 */
+	if ((zp->z_pflags & ZFS_IMMUTABLE)) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EPERM));
+	}
+#endif
+
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_SIZE(zfsvfs), NULL,
+	    &zp->z_size, 8);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_FLAGS(zfsvfs), NULL,
+	    &zp->z_pflags, 8);
+
+	/*
+	 * Start a transaction.
+	 */
+	tx = dmu_tx_create(zfsvfs->z_os);
+
+	dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
+	db = (dmu_buf_impl_t *)sa_get_db(zp->z_sa_hdl);
+	DB_DNODE_ENTER(db);
+	dmu_tx_hold_write_by_dnode(tx, DB_DNODE(db), offset, length);
+	DB_DNODE_EXIT(db);
+	zfs_sa_upgrade_txholds(tx, zp);
+	error = dmu_tx_assign(tx, TXG_WAIT);
+	if (error != 0) {
+		dmu_tx_abort(tx);
+		ZFS_EXIT(zfsvfs);
+		return (error);
+	}
+
+	if (zp->z_blksz < blksz)
+		zfs_grow_blocksize(zp, blksz, tx);
+
+	dmu_brt_addref(zfsvfs->z_os, zp->z_id, offset, length, tx, bps, nbps);
+
+	zfs_tstamp_update_setup(zp, CONTENT_MODIFIED, mtime, ctime);
+
+	zp->z_size = offset + length;
+
+	error = sa_bulk_update(zp->z_sa_hdl, bulk, count, tx);
+
+	dmu_tx_commit(tx);
+
+	zfs_znode_update_vfs(zp);
+
+	ZFS_EXIT(zfsvfs);
+
+	return (error);
 }
 
 EXPORT_SYMBOL(zfs_access);
@@ -1379,6 +1476,7 @@ EXPORT_SYMBOL(zfs_write);
 EXPORT_SYMBOL(zfs_getsecattr);
 EXPORT_SYMBOL(zfs_setsecattr);
 EXPORT_SYMBOL(zfs_clone_range);
+EXPORT_SYMBOL(zfs_clone_range_replay);
 
 ZFS_MODULE_PARAM(zfs_vnops, zfs_vnops_, read_chunk_size, ULONG, ZMOD_RW,
 	"Bytes to read per chunk");
