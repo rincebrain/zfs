@@ -298,6 +298,24 @@ zil_prt_rec_acl(zilog_t *zilog, int txtype, const void *arg)
 	    (u_longlong_t)lr->lr_foid, (u_longlong_t)lr->lr_aclcnt);
 }
 
+/* ARGSUSED */
+static void
+zil_prt_rec_clone(zilog_t *zilog, int txtype, const void *arg)
+{
+	const lr_clone_t *lr = arg;
+	unsigned int i;
+
+	(void) printf("%sfoid %llu, offset %llx, length %llx, blksize=%llx\n",
+	    tab_prefix, (u_longlong_t)lr->lr_foid, (u_longlong_t)lr->lr_offset,
+	    (u_longlong_t)lr->lr_length, (u_longlong_t)lr->lr_blksz);
+
+	for (i = 0; i < lr->lr_nbps; i++) {
+		(void) printf("%s[%u/%llu] ", tab_prefix, i + 1,
+		    (u_longlong_t)lr->lr_nbps);
+		print_log_bp(&lr->lr_bps[i], "");
+	}
+}
+
 typedef void (*zil_prt_rec_func_t)(zilog_t *, int, const void *);
 typedef struct zil_rec_info {
 	zil_prt_rec_func_t	zri_print;
