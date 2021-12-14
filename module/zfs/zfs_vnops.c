@@ -1121,24 +1121,6 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		length = srczp->z_size - srcoffset;
 
 	/*
-	 * This could be relaxed in the future, as we only need offset and
-	 * length to be multiple of block size, not BRT_CHUNK_SIZE.
-	 */
-	if ((srcoffset % BRT_CHUNK_SIZE) != 0) {
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (SET_ERROR(EINVAL));
-	}
-	if ((dstoffset % BRT_CHUNK_SIZE) != 0) {
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (SET_ERROR(EINVAL));
-	}
-	if ((length % BRT_CHUNK_SIZE) != 0 &&
-	    length != srczp->z_size - srcoffset) {
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (SET_ERROR(EINVAL));
-	}
-
-	/*
 	 * Callers might not be able to detect properly that we are read-only,
 	 * so check it explicitly here.
 	 */
@@ -1183,6 +1165,24 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		    length, RL_WRITER);
 		srclr = zfs_rangelock_enter(&srczp->z_rangelock, srcoffset,
 		    length, RL_READER);
+	}
+
+	if ((srcoffset % srczp->z_blksz) != 0 ||
+	    (dstoffset % srczp->z_blksz) != 0) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EINVAL));
+	}
+	/*
+	 * length may not be multipe of blksz only at the end of the file.
+	 */
+	if ((length % srczp->z_blksz) != 0 &&
+	    length != srczp->z_size - srcoffset) {
+		zfs_rangelock_exit(srclr);
+		zfs_rangelock_exit(dstlr);
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EINVAL));
 	}
 
 	error = zn_rlimit_fsize(dstoffset + length);
@@ -1393,11 +1393,7 @@ zfs_clone_range_replay(znode_t *zp, uint64_t offset, uint64_t length,
 		return (SET_ERROR(EOPNOTSUPP));
 	}
 
-	/*
-	 * This could be relaxed in the future, as we only need offset and
-	 * length to be multiple of block size, not BRT_CHUNK_SIZE.
-	 */
-	if ((offset % BRT_CHUNK_SIZE) != 0) {
+	if ((offset % blksz) != 0) {
 		ZFS_EXIT(zfsvfs);
 		return (SET_ERROR(EINVAL));
 	}
