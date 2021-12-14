@@ -1665,13 +1665,12 @@ zil_lwb_write_issue(zilog_t *zilog, lwb_t *lwb)
 }
 
 /*
- * Maximum amount of write data that can be put into single log block.
+ * Maximum amount of data that can be put into single log block.
  */
 uint64_t
-zil_max_log_data(zilog_t *zilog)
+zil_max_log_data(zilog_t *zilog, size_t hdrsize)
 {
-	return (zilog->zl_max_block_size -
-	    sizeof (zil_chain_t) - sizeof (lr_write_t));
+	return (zilog->zl_max_block_size - sizeof (zil_chain_t) - hdrsize);
 }
 
 /*
@@ -1681,7 +1680,7 @@ zil_max_log_data(zilog_t *zilog)
 static inline uint64_t
 zil_max_waste_space(zilog_t *zilog)
 {
-	return (zil_max_log_data(zilog) / 8);
+	return (zil_max_log_data(zilog, sizeof (lr_write_t)) / 8);
 }
 
 /*
@@ -1754,7 +1753,7 @@ cont:
 	 * For WR_NEED_COPY optimize layout for minimal number of chunks.
 	 */
 	lwb_sp = lwb->lwb_sz - lwb->lwb_nused;
-	max_log_data = zil_max_log_data(zilog);
+	max_log_data = zil_max_log_data(zilog, sizeof (lr_write_t));
 	if (reclen > lwb_sp || (reclen + dlen > lwb_sp &&
 	    lwb_sp < zil_max_waste_space(zilog) &&
 	    (dlen % max_log_data == 0 ||

@@ -538,7 +538,7 @@ extern void	zil_set_sync(zilog_t *zilog, uint64_t syncval);
 extern void	zil_set_logbias(zilog_t *zilog, uint64_t slogval);
 
 extern uint64_t	zil_max_copied_data(zilog_t *zilog);
-extern uint64_t	zil_max_log_data(zilog_t *zilog);
+extern uint64_t	zil_max_log_data(zilog_t *zilog, size_t hdrsize);
 
 extern int zil_replay_disable;
 
