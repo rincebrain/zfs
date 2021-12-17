@@ -30,16 +30,10 @@
 
 verify_runnable "both"
 
-function cleanup
-{
-	rm -f $TEST_BASE_DIR/devnull
-}
-
-log_onexit cleanup
-
-log_mustnot eval "zfs send -i \#bla $POOl/$FS@final > $TEST_BASE_DIR/devnull"
+set -o pipefail
+log_mustnot eval "zfs send -i \#bla $POOl/$FS@final | cat > /dev/null"
 
 log_must eval "zfs send -R -i snapA $POOL/vol@snapA 2>&1 " \
-    "> $TEST_BASE_DIR/devnull | grep -q WARNING"
+    "| cat > /dev/null | grep -q WARNING"
 
 log_pass "Ensure that error conditions cause appropriate failures."

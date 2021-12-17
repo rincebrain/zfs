@@ -101,9 +101,10 @@ set -A badargs \
 	"-I $POOL/recvfs" \
 	"-h $POOL/recvfs"
 
+set -o pipefail
 while (( i < ${#badargs[*]} ))
 do
-	log_mustnot eval "zfs send --saved ${badargs[i]} >$TEST_BASE_DIR/devnull"
+	log_mustnot eval "zfs send --saved ${badargs[i]} | cat > /dev/null"
 	(( i = i + 1 ))
 done
 
