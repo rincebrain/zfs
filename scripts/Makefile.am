@@ -6,6 +6,7 @@ dist_pkgdata_SCRIPTS = \
 	zimport.sh \
 	zfs.sh \
 	zfs-tests.sh \
+	zfs-tests-color.sh \
 	zloop.sh \
 	zfs-helpers.sh
 
