@@ -58,7 +58,6 @@ static struct chksum_stat_kstat {
 /*
  * implementation   digest    1k   2k  4k 16k 32k 64k 128k 256k 512k
  *
- * fletcher-4            4   22M  22M  22  22  22  22   22   22   22
  * edonr-generic       256   22M  22M  22  22  22  22   22   22   22
  * skein-generic       256   22M  22M  22  22  22  22   22   22   22
  * sha256-generic      256   22M  22M  22  22  22  22   22   22   22
@@ -209,18 +208,6 @@ chksum_benchmark(void)
 	struct chksum_stat_kstat *ks;
 	int i = 0, id, id_max = 0;
 	uint64_t max = 0;
-
-	/* fletcher */
-	#if 0
-	ks = &chksum_stat_data[i++];
-	ks->init = 0;
-	ks->func = abd_fletcher_4_native;
-	ks->free = 0;
-	ks->name = "fletcher";
-	ks->impl = "4";
-	ks->digest = 4;
-	chksum_benchit(ks);
-	#endif
 
 	/* edonr */
 	ks = &chksum_stat_data[i++];
