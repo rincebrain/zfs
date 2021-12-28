@@ -56,20 +56,21 @@ static struct chksum_stat_kstat {
 } chksum_stat_data[5+7]; /* current max */
 
 /*
- * implementation   digest    1k   2k  4k 16k 32k 64k 128k 256k 512k
+ * implementation       digest       1k   2k   4k  16k  32k  64k 128k 256k 512k
  *
- * edonr-generic       256   22M  22M  22  22  22  22   22   22   22
- * skein-generic       256   22M  22M  22  22  22  22   22   22   22
- * sha256-generic      256   22M  22M  22  22  22  22   22   22   22
- * sha512-generic      512   22M  22M  22  22  22  22   22   22   22
+ * fletcher-4                4      22M  22M   22   22   22   22   22   22   22
+ * edonr-generic           256      22M  22M   22   22   22   22   22   22   22
+ * skein-generic           256      22M  22M   22   22   22   22   22   22   22
+ * sha256-generic          256      22M  22M   22   22   22   22   22   22   22
+ * sha512-generic          512      22M  22M   22   22   22   22   22   22   22
  *
- * blake3-generic      256   22M  22M  22  22  22  22   22   22   22
- * blake3-sse2         256   22M  22M  22  22  22  22   22   22   22
- * blake3-sse41        256   22M  22M  22  22  22  22   22   22   22
- * blake3-avx          256   22M  22M  22  22  22  22   22   22   22
- * blake3-avx2         256   22M  22M  22  22  22  22   22   22   22
- * blake3-avx512       256   22M  22M  22  22  22  22   22   22   22
- * blake3-neon         256   22M  22M  22  22  22  22   22   22   22
+ * blake3-generic          256      22M  22M   22   22   22   22   22   22   22
+ * blake3-sse2             256      22M  22M   22   22   22   22   22   22   22
+ * blake3-sse41            256      22M  22M   22   22   22   22   22   22   22
+ * blake3-avx              256      22M  22M   22   22   22   22   22   22   22
+ * blake3-avx2             256      22M  22M   22   22   22   22   22   22   22
+ * blake3-avx512           256      22M  22M   22   22   22   22   22   22   22
+ * blake3-neon             256      22M  22M   22   22   22   22   22   22   22
  */
 static int
 chksum_stat_kstat_headers(char *buf, size_t size)
@@ -208,6 +209,18 @@ chksum_benchmark(void)
 	struct chksum_stat_kstat *ks;
 	int i = 0, id, id_max = 0;
 	uint64_t max = 0;
+
+	/* fletcher */
+	fletcher_4_init();
+	ks = &chksum_stat_data[i++];
+	ks->init = 0;
+	ks->func = abd_fletcher_4_native;
+	ks->free = 0;
+	ks->name = "fletcher";
+	ks->impl = "4";
+	ks->digest = 4;
+	chksum_benchit(ks);
+	fletcher_4_fini();
 
 	/* edonr */
 	ks = &chksum_stat_data[i++];

@@ -110,7 +110,7 @@ static void compress_pre(uint32_t state[16], const uint32_t cv[8],
 	round_fn(state, &block_words[0], 6);
 }
 
-static void blake3_compress_in_place_generic(uint32_t cv[8],
+void blake3_compress_in_place_generic(uint32_t cv[8],
     const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
     uint64_t counter, uint8_t flags)
 {
@@ -146,7 +146,7 @@ static void hash_one_generic(const uint8_t *input, size_t blocks,
 	store_cv_words(out, cv);
 }
 
-static void blake3_compress_xof_generic(const uint32_t cv[8],
+void blake3_compress_xof_generic(const uint32_t cv[8],
     const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
     uint64_t counter, uint8_t flags, uint8_t out[64])
 {

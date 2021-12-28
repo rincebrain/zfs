@@ -35,22 +35,6 @@
 
 #include "blake3_impl.h"
 
-static void blake3_compress_in_place_generic(uint32_t cv[8],
-    const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
-    uint64_t counter, uint8_t flags)
-{
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
-	ops->compress_in_place(cv, block, block_len, counter, flags);
-}
-
-static void blake3_compress_xof_generic(const uint32_t cv[8],
-    const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
-    uint64_t counter, uint8_t flags, uint8_t out[64])
-{
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
-	ops->compress_xof(cv, block, block_len, counter, flags, out);
-}
-
 
 static inline void hash_one_neon(const uint8_t *input, size_t blocks,
     const uint32_t key[8], uint64_t counter, uint8_t flags,

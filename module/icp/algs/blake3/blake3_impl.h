@@ -89,6 +89,14 @@ extern const blake3_impl_ops_t blake3_neon_impl;
  */
 extern const blake3_impl_ops_t *blake3_impl_get_ops(void);
 
+void blake3_compress_xof_generic(const uint32_t cv[8],
+    const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
+    uint64_t counter, uint8_t flags, uint8_t out[64]);
+
+void blake3_compress_in_place_generic(uint32_t cv[8],
+    const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
+    uint64_t counter, uint8_t flags);
+
 #if defined(__x86_64) && defined(HAVE_LARGE_STACKS)
 #define	MAX_SIMD_DEGREE 16
 #else
