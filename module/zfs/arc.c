@@ -310,6 +310,11 @@
 #include <sys/vdev_trim.h>
 #include <sys/zfs_racct.h>
 #include <sys/zstd/zstd.h>
+#ifdef _KERNEL
+	#include <linux/delay.h>
+#else
+	#define mdelay(x) (void)(0)
+#endif
 
 #ifndef _KERNEL
 /* set with ZFS_DEBUG=watch, to enable watchpoints on frozen buffers */
@@ -331,6 +336,9 @@ static zthr_t *arc_evict_zthr;
 
 static kmutex_t arc_evict_lock;
 static boolean_t arc_evict_needed = B_FALSE;
+
+/* Prepare for some fun */
+static int zfs_arc_wild_delay = 0;
 
 /*
  * Count of bytes evicted since boot.
@@ -1836,6 +1844,13 @@ arc_hdr_decrypt(arc_buf_hdr_t *hdr, spa_t *spa, const zbookmark_phys_t *zb)
 	ASSERT(HDR_EMPTY_OR_LOCKED(hdr));
 	ASSERT(HDR_ENCRYPTED(hdr));
 
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
+
 	arc_hdr_alloc_abd(hdr, ARC_HDR_DO_ADAPT);
 
 	ret = spa_do_crypt_abd(B_FALSE, spa, zb, hdr->b_crypt_hdr.b_ot,
@@ -1904,6 +1919,13 @@ arc_fill_hdr_crypt(arc_buf_hdr_t *hdr, kmutex_t *hash_lock, spa_t *spa,
 
 	ASSERT(HDR_PROTECTED(hdr));
 
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
+
 	if (hash_lock != NULL)
 		mutex_enter(hash_lock);
 
@@ -1951,6 +1973,13 @@ arc_buf_untransform_in_place(arc_buf_t *buf, kmutex_t *hash_lock)
 {
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
+
 	ASSERT(HDR_ENCRYPTED(hdr));
 	ASSERT3U(hdr->b_crypt_hdr.b_ot, ==, DMU_OT_DNODE);
 	ASSERT(HDR_EMPTY_OR_LOCKED(hdr));
@@ -1996,6 +2025,13 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 	IMPLY(encrypted, ARC_BUF_ENCRYPTED(buf));
 	IMPLY(encrypted, ARC_BUF_COMPRESSED(buf));
 	IMPLY(encrypted, !ARC_BUF_SHARED(buf));
+
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
 
 	/*
 	 * If the caller wanted encrypted data we just need to copy it from
@@ -2164,6 +2200,13 @@ arc_untransform(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 {
 	int ret;
 	arc_fill_flags_t flags = 0;
+
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
 
 	if (in_place)
 		flags |= ARC_FILL_IN_PLACE;
@@ -2390,6 +2433,13 @@ arc_change_state(arc_state_t *new_state, arc_buf_hdr_t *hdr,
 	uint32_t bufcnt;
 	boolean_t update_old, update_new;
 	arc_buf_contents_t buftype = arc_buf_type(hdr);
+
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
 
 	/*
 	 * We almost always have an L1 hdr here, since we call arc_hdr_realloc()
@@ -3278,6 +3328,13 @@ arc_hdr_alloc(uint64_t spa, int32_t psize, int32_t lsize,
 		hdr = kmem_cache_alloc(hdr_full_cache, KM_PUSHPAGE);
 	}
 
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
+
 	ASSERT(HDR_EMPTY(hdr));
 	ASSERT3P(hdr->b_l1hdr.b_freeze_cksum, ==, NULL);
 	HDR_SET_PSIZE(hdr, psize);
@@ -3322,6 +3379,13 @@ arc_hdr_realloc(arc_buf_hdr_t *hdr, kmem_cache_t *old, kmem_cache_t *new)
 
 	ASSERT((old == hdr_full_cache && new == hdr_l2only_cache) ||
 	    (old == hdr_l2only_cache && new == hdr_full_cache));
+
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
 
 	/*
 	 * if the caller wanted a new full header and the header is to be
@@ -3443,6 +3507,13 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 	ASSERT(!list_link_active(&hdr->b_l2hdr.b_l2node));
 	ASSERT3P(hdr->b_hash_next, ==, NULL);
 
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
+
 	if (need_crypt) {
 		ncache = hdr_full_crypt_cache;
 		ocache = hdr_full_cache;
@@ -3554,6 +3625,13 @@ arc_convert_to_raw(arc_buf_t *buf, uint64_t dsobj, boolean_t byteorder,
 	ASSERT(ot == DMU_OT_DNODE || ot == DMU_OT_OBJSET);
 	ASSERT(HDR_HAS_L1HDR(hdr));
 	ASSERT3P(hdr->b_l1hdr.b_state, ==, arc_anon);
+
+	if (zfs_arc_wild_delay) {
+		if (random_in_range(2) == 0)
+			cond_resched();
+		else
+			mdelay(random_in_range(zfs_arc_wild_delay));
+	}
 
 	buf->b_flags |= (ARC_BUF_FLAG_COMPRESSED | ARC_BUF_FLAG_ENCRYPTED);
 	if (!HDR_PROTECTED(hdr))
@@ -11010,6 +11088,9 @@ EXPORT_SYMBOL(arc_add_prune_callback);
 EXPORT_SYMBOL(arc_remove_prune_callback);
 
 /* BEGIN CSTYLED */
+ZFS_MODULE_PARAM(zfs_arc, zfs_arc_, wild_delay, INT, ZMOD_RW,
+	"Random wild delay size");
+
 ZFS_MODULE_PARAM_CALL(zfs_arc, zfs_arc_, min, param_set_arc_min,
 	param_get_long, ZMOD_RW, "Min arc size");
 
