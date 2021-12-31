@@ -172,9 +172,15 @@ chksum_run(chksum_stat_t *cs, abd_t *abd, void *ctx, uint64_t size,
 static void
 chksum_benchit(chksum_stat_t *cs)
 {
+	#ifdef _KERNEL
+//	printk(KERN_INFO "DEBUG CHKSUM: %s BEGIN", cs->name);
+	#endif
 	abd_t *abd;
 	void *ctx = 0;
 	zio_cksum_salt_t salt;
+	#ifndef _KERNEL
+	char *buf = kmem_zalloc(4096, KM_SLEEP);
+	#endif
 
 	/* allocate test memory via default abd interface */
 	abd = abd_alloc_linear(1024*1024, B_FALSE);
@@ -194,12 +200,20 @@ chksum_benchit(chksum_stat_t *cs)
 	chksum_run(cs, abd, ctx, 1024*256, &cs->bs256k);
 	chksum_run(cs, abd, ctx, 1024*512, &cs->bs512k);
 	chksum_run(cs, abd, ctx, 1024*1024, &cs->bs1m);
+	#ifndef _KERNEL
+	chksum_stat_kstat_data(buf,4096,cs);
+	zfs_dbgmsg(buf);
+	free(buf);
+	#endif
 
 	/* free up temp memory */
 	if (cs->free) {
 		cs->free(ctx);
 	}
 	abd_free(abd);
+	#ifdef _KERNEL
+//	printk(KERN_INFO "DEBUG CHKSUM: %s END", cs->name);
+	#endif
 }
 
 /*
@@ -213,20 +227,18 @@ chksum_benchmark(void)
 	uint64_t max = 0;
 
 	/* space for the benchmark times */
-	chksum_stat_cnt = 5 + blake3_get_impl_count();
+	chksum_stat_cnt = 6 + blake3_get_impl_count();
 	chksum_stat_data = (chksum_stat_t *)kmem_zalloc(
 	    sizeof (chksum_stat_t) * chksum_stat_cnt, KM_SLEEP);
 
-	/*
-	 * cs = &chksum_stat_data[i++];
-	 * cs->init = 0;
-	 * cs->func = abd_fletcher_4_native;
-	 * cs->free = 0;
-	 * cs->name = "fletcher";
-	 * cs->impl = "4";
-	 * cs->digest = 4;
-	 * chksum_benchit(cs);
-	 */
+	cs = &chksum_stat_data[i++];
+	cs->init = 0;
+	cs->func = abd_fletcher_4_native;
+	cs->free = 0;
+	cs->name = "fletcher";
+	cs->impl = "4";
+	cs->digest = 4;
+	chksum_benchit(cs);
 
 	/* edonr */
 	cs = &chksum_stat_data[i++];
@@ -245,6 +257,15 @@ chksum_benchmark(void)
 	cs->free = abd_checksum_skein_tmpl_free;
 	cs->name = "skein";
 	cs->impl = "generic";
+	cs->digest = 256;
+	chksum_benchit(cs);
+
+	cs = &chksum_stat_data[i++];
+	cs->init = 0;
+	cs->func = abd_checksum_kangarootwelve_native;
+	cs->free = 0;
+	cs->name = "Kangaroo12";
+	cs->impl = "avx2";
 	cs->digest = 256;
 	chksum_benchit(cs);
 
@@ -292,6 +313,8 @@ chksum_benchmark(void)
 void
 chksum_init(void)
 {
+	fletcher_4_init();
+	
 	/* Benchmark supported implementations */
 	chksum_benchmark();
 
@@ -313,6 +336,7 @@ chksum_init(void)
 void
 chksum_fini(void)
 {
+	fletcher_4_fini();
 	if (chksum_kstat != NULL) {
 		kstat_delete(chksum_kstat);
 		chksum_kstat = NULL;

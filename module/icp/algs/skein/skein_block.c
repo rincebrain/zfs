@@ -9,9 +9,15 @@
  */
 /* Copyright 2013 Doug Whiting. This code is released to the public domain. */
 
+
 #include <sys/skein.h>
 #include "skein_impl.h"
 #include <sys/isa_defs.h>	/* for _ILP32 */
+
+#ifdef bcopy
+#undef bcopy
+#endif
+#define bcopy(src, dst, sz) __builtin_memcpy(dst, src, sz)
 
 #ifndef	SKEIN_USE_ASM
 #define	SKEIN_USE_ASM	(0)	/* default is all C code (no ASM) */

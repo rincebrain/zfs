@@ -24,10 +24,15 @@
 #ifndef	_SKEIN_IMPL_H_
 #define	_SKEIN_IMPL_H_
 
+#include <sys/simd.h>
 #include <sys/skein.h>
 #include <sys/strings.h>
 #include "skein_impl.h"
 #include "skein_port.h"
+
+#define SKEIN_USE_ASM (256+512+1024)
+//#define SKEIN_USE_ASM (0)
+//#define SKEIN_LOOP 0
 
 /*
  * "Internal" Skein definitions
@@ -280,5 +285,36 @@ void Skein_512_Process_Block(Skein_512_Ctxt_t *ctx, const uint8_t *blkPtr,
     size_t blkCnt, size_t byteCntAdd);
 void Skein1024_Process_Block(Skein1024_Ctxt_t *ctx, const uint8_t *blkPtr,
     size_t blkCnt, size_t byteCntAdd);
+
+static inline void Skein_256_Process_Block_wrap(Skein_256_Ctxt_t *ctx, const uint8_t *blkPtr,
+    size_t blkCnt, size_t byteCntAdd) {
+    #if (SKEIN_USE_ASM & 256)
+//    kfpu_begin();
+    #endif
+    Skein_256_Process_Block(ctx,blkPtr,blkCnt,byteCntAdd);
+    #if (SKEIN_USE_ASM & 256)
+//    kfpu_end();
+    #endif
+}
+static inline void Skein_512_Process_Block_wrap(Skein_512_Ctxt_t *ctx, const uint8_t *blkPtr,
+    size_t blkCnt, size_t byteCntAdd) {
+    #if (SKEIN_USE_ASM & 512)
+//    kfpu_begin();
+    #endif
+    Skein_512_Process_Block(ctx,blkPtr,blkCnt,byteCntAdd);
+    #if (SKEIN_USE_ASM & 512)
+//    kfpu_end();
+    #endif
+}
+static inline void Skein1024_Process_Block_wrap(Skein1024_Ctxt_t *ctx, const uint8_t *blkPtr,
+    size_t blkCnt, size_t byteCntAdd) {
+    #if (SKEIN_USE_ASM & 1024)
+//    kfpu_begin();
+    #endif
+    Skein1024_Process_Block(ctx,blkPtr,blkCnt,byteCntAdd);
+    #if (SKEIN_USE_ASM & 1024)
+//    kfpu_end();
+    #endif
+}
 
 #endif	/* _SKEIN_IMPL_H_ */

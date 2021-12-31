@@ -199,6 +199,10 @@ zio_checksum_info_t zio_checksum_table[ZIO_CHECKSUM_FUNCTIONS] = {
 	    abd_checksum_blake3_tmpl_init, abd_checksum_blake3_tmpl_free,
 	    ZCHECKSUM_FLAG_METADATA | ZCHECKSUM_FLAG_DEDUP |
 	    ZCHECKSUM_FLAG_SALTED | ZCHECKSUM_FLAG_NOPWRITE, "blake3"},
+	{{abd_checksum_kangarootwelve_native,	abd_checksum_kangarootwelve_byteswap},
+	    NULL, NULL,
+	    ZCHECKSUM_FLAG_METADATA | ZCHECKSUM_FLAG_DEDUP |
+	    ZCHECKSUM_FLAG_NOPWRITE, "kangarootwelve"},
 };
 
 /*
@@ -211,6 +215,8 @@ zio_checksum_to_feature(enum zio_checksum cksum)
 	VERIFY((cksum & ~ZIO_CHECKSUM_MASK) == 0);
 
 	switch (cksum) {
+	case ZIO_CHECKSUM_KANGAROOTWELVE:
+		return (SPA_FEATURE_KANGAROOTWELVE);
 	case ZIO_CHECKSUM_BLAKE3:
 		return (SPA_FEATURE_BLAKE3);
 	case ZIO_CHECKSUM_SHA512:

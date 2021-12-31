@@ -45,6 +45,9 @@ COMMON_H = \
 	efi_partition.h \
 	frame.h \
 	hkdf.h \
+	kangarootwelve.h \
+	KeccakSponge.h \
+	config.h \
 	metaslab.h \
 	metaslab_impl.h \
 	mmp.h \

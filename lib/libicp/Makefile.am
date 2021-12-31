@@ -5,19 +5,25 @@ VPATH = \
 	$(top_srcdir)/lib/libicp
 
 # Includes kernel code, generate warnings for large stack frames
-AM_CFLAGS += $(FRAME_LARGER_THAN)
+#AM_CFLAGS += $(FRAME_LARGER_THAN)
+AM_CFLAGS += -Werror=frame-larger-than=1048576
 
 noinst_LTLIBRARIES = libicp.la
 
 if TARGET_CPU_X86_64
+AM_CFLAGS += -mavx2
 ASM_SOURCES_C = asm-x86_64/aes/aeskey.c
 ASM_SOURCES_AS = \
+	algs/skein/skein_block_x64_4.S \
 	asm-x86_64/aes/aes_amd64.S \
 	asm-x86_64/aes/aes_aesni.S \
 	asm-x86_64/blake3/blake3_avx2.S \
 	asm-x86_64/blake3/blake3_avx512.S \
 	asm-x86_64/blake3/blake3_sse2.S \
 	asm-x86_64/blake3/blake3_sse41.S \
+	algs/kangarootwelve/KeccakP-1600-times2-SIMD128.c \
+	algs/kangarootwelve/KeccakP-1600-times4-SIMD256.c \
+	algs/kangarootwelve/KeccakP-1600-AVX2.S \
 	asm-x86_64/modes/gcm_pclmulqdq.S \
 	asm-x86_64/modes/aesni-gcm-x86_64.S \
 	asm-x86_64/modes/ghash-x86_64.S \
@@ -66,6 +72,8 @@ KERNEL_C = \
 	algs/skein/skein.c \
 	algs/skein/skein_block.c \
 	algs/skein/skein_iv.c \
+	algs/kangarootwelve/KangarooTwelve.c \
+	algs/kangarootwelve/KeccakSponge.c \
 	illumos-crypto.c \
 	io/aes.c \
 	io/edonr_mod.c \

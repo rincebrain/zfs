@@ -12,6 +12,7 @@ obj-$(CONFIG_ZFS) := $(MODULE).o
 
 asflags-y := -I$(icp_include)
 ccflags-y := -I$(icp_include)
+ccflags-y += -msse -mavx2
 
 $(MODULE)-objs += illumos-crypto.o
 $(MODULE)-objs += api/kcf_cipher.o
@@ -47,10 +48,16 @@ $(MODULE)-objs += algs/blake3/blake3_generic.o
 $(MODULE)-objs += algs/blake3/blake3_impl.o
 $(MODULE)-objs += algs/blake3/blake3_x86-64.o
 $(MODULE)-objs += algs/edonr/edonr.o
+$(MODULE)-objs += algs/kangarootwelve/KangarooTwelve.o
+$(MODULE)-objs += algs/kangarootwelve/KeccakSponge.o
+$(MODULE)-objs += algs/kangarootwelve/KeccakP-1600-times2-SIMD128.o
+$(MODULE)-objs += algs/kangarootwelve/KeccakP-1600-AVX2.o
+$(MODULE)-objs += algs/kangarootwelve/KeccakP-1600-times4-SIMD256.o
 $(MODULE)-objs += algs/sha1/sha1.o
 $(MODULE)-objs += algs/sha2/sha2.o
 $(MODULE)-objs += algs/skein/skein.o
 $(MODULE)-objs += algs/skein/skein_block.o
+$(MODULE)-objs += algs/skein/skein_block_x64_4.o
 $(MODULE)-objs += algs/skein/skein_iv.o
 
 $(MODULE)-$(CONFIG_ARM64) += asm-aarch64/blake3/blake3_neon.o
@@ -97,6 +104,7 @@ ICP_DIRS = \
 	algs/aes \
 	algs/blake3 \
 	algs/edonr \
+	algs/kangarootwelve \
 	algs/modes \
 	algs/sha1 \
 	algs/sha2 \

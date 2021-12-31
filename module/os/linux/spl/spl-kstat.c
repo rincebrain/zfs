@@ -710,6 +710,17 @@ spl_kstat_init(void)
 void
 spl_kstat_fini(void)
 {
+	kstat_module_t *module = NULL;
+	kstat_proc_entry_t *tmp = NULL;
+	
+	if (!list_empty(&kstat_module_list)) {
+		list_for_each_entry(module, &kstat_module_list, ksm_module_list) {
+			list_for_each_entry(tmp, &module->ksm_kstat_list, kpe_list) {
+				if (strlen(tmp->kpe_name) != 0)
+					printk("DBG: KSTAT %s STILL LOADED, DINGUS", tmp->kpe_name);
+			}
+		}
+	}
 	ASSERT(list_empty(&kstat_module_list));
 	mutex_destroy(&kstat_module_lock);
 }

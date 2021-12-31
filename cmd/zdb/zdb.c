@@ -78,7 +78,7 @@
 #include <sys/btree.h>
 #include <zfs_comutil.h>
 #include <sys/zstd/zstd.h>
-
+#include <sys/zfs_chksum.h>
 #include <libnvpair.h>
 #include <libzutil.h>
 
@@ -8713,6 +8713,8 @@ main(int argc, char **argv)
 
 	if (target_pool != target)
 		free(target_pool);
+//	abd_init();
+	chksum_init();
 
 	if (error == 0) {
 		if (dump_opt['k'] && (target_is_spa || dump_opt['R'])) {

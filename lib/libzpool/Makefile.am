@@ -23,6 +23,8 @@ AM_CFLAGS += $(NO_UNUSED_BUT_SET_VARIABLE)
 # Includes kernel code generate warnings for large stack frames
 AM_CFLAGS += $(FRAME_LARGER_THAN)
 
+AM_CFLAGS += -mavx2
+
 AM_CFLAGS += $(ZLIB_CFLAGS)
 
 AM_CFLAGS += -DLIB_ZPOOL_BUILD
@@ -94,6 +96,7 @@ KERNEL_C = \
 	fm.c \
 	gzip.c \
 	hkdf.c \
+	kangarootwelve_zfs.c \
 	lz4.c \
 	lzjb.c \
 	metaslab.c \

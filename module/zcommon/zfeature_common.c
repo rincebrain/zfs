@@ -706,6 +706,17 @@ zpool_feature_init(void)
 		    ZFEATURE_FLAG_PER_DATASET, ZFEATURE_TYPE_BOOLEAN,
 		    blake3_deps, sfeatures);
 	}
+	{
+		static const spa_feature_t kangarootwelve_deps[] = {
+			SPA_FEATURE_EXTENSIBLE_DATASET,
+			SPA_FEATURE_NONE
+		};
+		zfeature_register(SPA_FEATURE_KANGAROOTWELVE,
+		    "org.openzfs:kangarootwelve", "kangarootwelve",
+		    "KangarooTwelve hash algorithm.",
+		    ZFEATURE_FLAG_PER_DATASET, ZFEATURE_TYPE_BOOLEAN,
+		    kangarootwelve_deps, sfeatures);
+	}
 
 	zfs_mod_list_supported_free(sfeatures);
 }

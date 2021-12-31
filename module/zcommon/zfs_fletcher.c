@@ -771,26 +771,30 @@ fletcher_4_benchmark(void)
 void
 fletcher_4_init(void)
 {
-	/* Determine the fastest available implementation. */
-	fletcher_4_benchmark();
+	if (!fletcher_4_initialized) {
+		/* Determine the fastest available implementation. */
+		fletcher_4_benchmark();
 
 #if defined(_KERNEL)
-	/* Install kstats for all implementations */
-	fletcher_4_kstat = kstat_create("zfs", 0, "fletcher_4_bench", "misc",
-	    KSTAT_TYPE_RAW, 0, KSTAT_FLAG_VIRTUAL);
-	if (fletcher_4_kstat != NULL) {
-		fletcher_4_kstat->ks_data = NULL;
-		fletcher_4_kstat->ks_ndata = UINT32_MAX;
-		kstat_set_raw_ops(fletcher_4_kstat,
-		    fletcher_4_kstat_headers,
-		    fletcher_4_kstat_data,
-		    fletcher_4_kstat_addr);
-		kstat_install(fletcher_4_kstat);
-	}
+		/* Install kstats for all implementations */
+		if (!fletcher_4_kstat) {
+			fletcher_4_kstat = kstat_create("zfs", 0, "fletcher_4_bench", "misc",
+			    KSTAT_TYPE_RAW, 0, KSTAT_FLAG_VIRTUAL);
+			if (fletcher_4_kstat != NULL) {
+				fletcher_4_kstat->ks_data = NULL;
+				fletcher_4_kstat->ks_ndata = UINT32_MAX;
+				kstat_set_raw_ops(fletcher_4_kstat,
+				    fletcher_4_kstat_headers,
+				    fletcher_4_kstat_data,
+				    fletcher_4_kstat_addr);
+				kstat_install(fletcher_4_kstat);
+			}
+		}
 #endif
 
-	/* Finish initialization */
-	fletcher_4_initialized = B_TRUE;
+		/* Finish initialization */
+		fletcher_4_initialized = B_TRUE;
+	}
 }
 
 void
