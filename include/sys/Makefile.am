@@ -9,6 +9,7 @@ COMMON_H = \
 	avl.h \
 	avl_impl.h \
 	bitops.h \
+	blake3.h \
 	blkptr.h \
 	bplist.h \
 	bpobj.h \
@@ -104,6 +105,7 @@ COMMON_H = \
 	zfs_acl.h \
 	zfs_bootenv.h \
 	zfs_context.h \
+	zfs_chksum.h \
 	zfs_debug.h \
 	zfs_delay.h \
 	zfs_file.h \
