@@ -775,6 +775,9 @@ fletcher_4_benchmark(void)
 void
 fletcher_4_init(void)
 {
+	if (fletcher_4_initialized == B_TRUE)
+		return;
+
 	/* Determine the fastest available implementation. */
 	fletcher_4_benchmark();
 
