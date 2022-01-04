@@ -51,6 +51,7 @@ KERNEL_C = \
 	aggsum.c \
 	arc.c \
 	arc_os.c \
+	blake3_zfs.c \
 	blkptr.c \
 	bplist.c \
 	bpobj.c \
@@ -158,6 +159,7 @@ KERNEL_C = \
 	zcp_synctask.c \
 	zfeature.c \
 	zfs_byteswap.c \
+	zfs_chksum.c \
 	zfs_debug.c \
 	zfs_fm.c \
 	zfs_fuid.c \
