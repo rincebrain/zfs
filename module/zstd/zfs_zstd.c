@@ -48,6 +48,7 @@
 
 #define	ZSTD_STATIC_LINKING_ONLY
 #include "lib/zstd.h"
+#include "lib/common/zstd_internal.h"
 #include "lib/zstd_errors.h"
 
 kstat_t *zstd_ksp = NULL;
@@ -785,7 +786,7 @@ module_exit(zstd_fini);
 
 ZFS_MODULE_DESCRIPTION("ZSTD Compression for ZFS");
 ZFS_MODULE_LICENSE("Dual BSD/GPL");
-ZFS_MODULE_VERSION(ZSTD_VERSION_STRING "a");
+ZFS_MODULE_VERSION(ZSTD_VERSION_STRING);
 
 EXPORT_SYMBOL(zfs_zstd_compress);
 EXPORT_SYMBOL(zfs_zstd_decompress_level);
