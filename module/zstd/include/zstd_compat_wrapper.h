@@ -57,6 +57,10 @@
 #define        ZSTD_NOBENCH
 #define	ZSTD_ADDRESS_SANITIZER 0
 #define	ZSTD_MEMORY_SANITIZER 0
+#define DEBUGLEVEL 0
+#ifdef _KERNEL
+#define ZSTD_DEPS_ASSERT
+#endif
 
 #define algoTime zfs_algoTime
 #define attachDictSizeCutoffs zfs_attachDictSizeCutoffs

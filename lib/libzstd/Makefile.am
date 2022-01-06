@@ -11,7 +11,6 @@ noinst_LTLIBRARIES = libzstd.la
 KERNEL_ASM = lib/decompress/huf_decompress_amd64.S
 
 KERNEL_C = \
-	lib/common/debug.c \
 	lib/common/entropy_common.c \
 	lib/common/error_private.c \
 	lib/common/fse_decompress.c \
