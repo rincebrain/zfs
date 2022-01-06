@@ -40,7 +40,7 @@ jobs:
         #   Ubuntu will load kernel-shipped ones.
         sudo sed -i.bak 's/updates/extra updates/' /etc/depmod.d/ubuntu.conf
         sudo depmod
-        sudo modprobe zfs
+        sudo modprobe zfs reference_tracking_enable=1
         # Workaround for cloud-init bug
         # see https://github.com/openzfs/zfs/issues/12644
         FILE=/lib/udev/rules.d/10-cloud-init-hook-hotplug.rules
