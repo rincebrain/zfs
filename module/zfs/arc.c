@@ -1987,6 +1987,7 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
     arc_fill_flags_t flags)
 {
 	int error = 0;
+	boolean_t big_mutex = B_FALSE;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 	boolean_t hdr_compressed =
 	    (arc_hdr_get_compress(hdr) != ZIO_COMPRESS_OFF);
@@ -1994,6 +1995,17 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 	boolean_t encrypted = (flags & ARC_FILL_ENCRYPTED) != 0;
 	dmu_object_byteswap_t bswap = hdr->b_l1hdr.b_byteswap;
 	kmutex_t *hash_lock = (flags & ARC_FILL_LOCKED) ? NULL : HDR_LOCK(hdr);
+	
+	/*
+	 * You are in a maze of racey passages, all alike.
+	 * You are likely to be eaten by a NULL dereference.
+	 */
+	if ((flags & ARC_FILL_IN_PLACE)) {
+               if (!MUTEX_HELD(&buf->b_evict_lock)) {
+                       mutex_enter(&buf->b_evict_lock);
+                       big_mutex = B_TRUE;
+               }
+       }
 
 	ASSERT3P(buf->b_data, !=, NULL);
 	IMPLY(compressed, hdr_compressed || ARC_BUF_ENCRYPTED(buf));
@@ -2025,6 +2037,8 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 		error = arc_fill_hdr_crypt(hdr, hash_lock, spa,
 		    zb, !!(flags & ARC_FILL_NOAUTH));
 		if (error == EACCES && (flags & ARC_FILL_IN_PLACE) != 0) {
+			if (big_mutex)
+				mutex_exit(&buf->b_evict_lock);
 			return (error);
 		} else if (error != 0) {
 			if (hash_lock != NULL)
@@ -2032,6 +2046,8 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 			arc_hdr_set_flags(hdr, ARC_FLAG_IO_ERROR);
 			if (hash_lock != NULL)
 				mutex_exit(hash_lock);
+			if (big_mutex)
+				mutex_exit(&buf->b_evict_lock);
 			return (error);
 		}
 	}
@@ -2065,8 +2081,15 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 			arc_cksum_compute(buf);
 		}
 
+		mutex_exit(&buf->b_evict_lock);
 		return (0);
 	}
+
+	/*
+	 * If we get here, it should be logically impossible for big_mutex
+	 * to be held.
+	 */
+	ASSERT(big_mutex == B_FALSE);
 
 	if (hdr_compressed == compressed) {
 		if (!arc_buf_is_shared(buf)) {
@@ -2144,6 +2167,12 @@ arc_buf_fill(arc_buf_t *buf, spa_t *spa, const zbookmark_phys_t *zb,
 	}
 
 byteswap:
+	/*
+	 * If we get here, it should be logically impossible for big_mutex
+	 * to be held, since FILL_IN_PLACE should be mutually exclusive with
+	 * encrypted.
+	 */
+	ASSERT(big_mutex == B_FALSE);
 	/* Byteswap the buf's data if necessary */
 	if (bswap != DMU_BSWAP_NUMFUNCS) {
 		ASSERT(!HDR_SHARED_DATA(hdr));
