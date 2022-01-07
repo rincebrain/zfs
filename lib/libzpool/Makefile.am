@@ -90,11 +90,12 @@ KERNEL_C = \
 	dsl_destroy.c \
 	dsl_userhold.c \
 	edonr_zfs.c \
-	hkdf.c \
 	fm.c \
 	gzip.c \
-	lzjb.c \
+	hkdf.c \
 	lz4.c \
+	lz4_zfs.c \
+	lzjb.c \
 	metaslab.c \
 	mmp.c \
 	multilist.c \
