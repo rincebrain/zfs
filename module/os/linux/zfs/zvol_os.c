@@ -1110,7 +1110,8 @@ out_doi:
 		rw_enter(&zvol_state_lock, RW_WRITER);
 		zvol_insert(zv);
 		rw_exit(&zvol_state_lock);
-		add_disk(zv->zv_zso->zvo_disk);
+		int dumb = add_disk(zv->zv_zso->zvo_disk);
+		dumb = dumb;
 	} else {
 		ida_simple_remove(&zvol_ida, idx);
 	}
