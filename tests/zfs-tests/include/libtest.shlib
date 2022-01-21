@@ -285,7 +285,7 @@ function default_setup_noexit
 			destroy_pool $TESTPOOL
 		fi
 		[[ -d /$TESTPOOL ]] && rm -rf /$TESTPOOL
-		log_must zpool create -f $TESTPOOL $disklist
+		log_must zpool create -O compression=on -f $TESTPOOL $disklist
 	else
 		reexport_pool
 	fi
@@ -487,7 +487,7 @@ function default_mirror_setup_noexit
 	[[ -z $secondary ]] && \
 		log_fail "$func: No secondary partition passed"
 	[[ -d /$TESTPOOL ]] && rm -rf /$TESTPOOL
-	log_must zpool create -f $TESTPOOL mirror $@
+	log_must zpool create -O compression=on -f $TESTPOOL mirror $@
 	log_must zfs create $TESTPOOL/$TESTFS
 	log_must zfs set mountpoint=$TESTDIR $TESTPOOL/$TESTFS
 }
@@ -507,7 +507,7 @@ function setup_mirrors
 	while ((nmirrors > 0)); do
 		log_must test -n "$1" -a -n "$2"
 		[[ -d /$TESTPOOL$nmirrors ]] && rm -rf /$TESTPOOL$nmirrors
-		log_must zpool create -f $TESTPOOL$nmirrors mirror $1 $2
+		log_must zpool create -O compression=on -f $TESTPOOL$nmirrors mirror $1 $2
 		shift 2
 		((nmirrors = nmirrors - 1))
 	done
@@ -528,7 +528,7 @@ function setup_raidzs
 	while ((nraidzs > 0)); do
 		log_must test -n "$1" -a -n "$2"
 		[[ -d /$TESTPOOL$nraidzs ]] && rm -rf /$TESTPOOL$nraidzs
-		log_must zpool create -f $TESTPOOL$nraidzs raidz $1 $2
+		log_must zpool create -O compression=on -f $TESTPOOL$nraidzs raidz $1 $2
 		shift 2
 		((nraidzs = nraidzs - 1))
 	done
@@ -559,7 +559,7 @@ function default_raidz_setup
 	fi
 
 	[[ -d /$TESTPOOL ]] && rm -rf /$TESTPOOL
-	log_must zpool create -f $TESTPOOL raidz $disklist
+	log_must zpool create -O compression=on -f $TESTPOOL raidz $disklist
 	log_must zfs create $TESTPOOL/$TESTFS
 	log_must zfs set mountpoint=$TESTDIR $TESTPOOL/$TESTFS
 
@@ -1761,7 +1761,7 @@ function create_pool #pool devs_list
 
 	if is_global_zone ; then
 		[[ -d /$pool ]] && rm -rf /$pool
-		log_must zpool create -f $pool $@
+		log_must zpool create -O compression=on -f $pool $@
 	fi
 
 	return 0
@@ -1885,7 +1885,7 @@ function zfs_zones_setup #zone_name zone_root zone_ip
 	# Create pool and 5 container within it
 	#
 	[[ -d /$pool_name ]] && rm -rf /$pool_name
-	log_must zpool create -f $pool_name $DISKS
+	log_must zpool create -O compression=on -f $pool_name $DISKS
 	while ((i < cntctr)); do
 		log_must zfs create $pool_name/$prefix_ctr$i
 		((i += 1))
