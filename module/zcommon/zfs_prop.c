@@ -402,7 +402,7 @@ zfs_prop_init(void)
 	    "skein[,verify] | edonr,verify",
 	    "DEDUP", dedup_table, sfeatures);
 	zprop_register_index(ZFS_PROP_COMPRESSION, "compression",
-	    ZIO_COMPRESS_DEFAULT, PROP_INHERIT,
+	    ZIO_COMPRESS_ON, PROP_INHERIT,
 	    ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
 	    "on | off | lzjb | gzip | gzip-[1-9] | zle | lz4 | "
 	    "zstd | zstd-[1-19] | "

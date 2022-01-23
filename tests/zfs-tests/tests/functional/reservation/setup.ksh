@@ -33,3 +33,4 @@
 
 default_setup_noexit ${DISKS%% *}
 log_pass
+zfs set compression=off $TESTPOOL/$TESTFS

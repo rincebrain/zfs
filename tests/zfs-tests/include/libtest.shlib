@@ -448,7 +448,7 @@ function create_recv_clone
 	datasetexists $recvfs && log_fail "Recv filesystem must not exist."
 	datasetexists $sendfs && log_fail "Send filesystem must not exist."
 
-	log_must zfs create -o mountpoint="$mountpoint" $sendfs
+	log_must zfs create -o compression=off -o mountpoint="$mountpoint" $sendfs
 	log_must zfs snapshot $snap
 	log_must eval "zfs send $snap | zfs recv -u $recvfs"
 	log_must mkfile 1m "$mountpoint/data"
