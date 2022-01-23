@@ -146,7 +146,7 @@ function test_clone_clone_promote
 ORIGINAL_MAX=$(get_tunable LIVELIST_MAX_ENTRIES)
 
 log_onexit cleanup
-log_must zfs create $TESTPOOL/$TESTFS1
+log_must zfs create -o compression=off $TESTPOOL/$TESTFS1
 log_must mkfile 20m /$TESTPOOL/$TESTFS1/atestfile
 log_must zfs snapshot $TESTPOOL/$TESTFS1@snap
 

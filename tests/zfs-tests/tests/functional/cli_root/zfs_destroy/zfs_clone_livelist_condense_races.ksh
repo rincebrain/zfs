@@ -93,6 +93,11 @@ ORIGINAL_MAX=$(get_tunable LIVELIST_MAX_ENTRIES)
 
 log_onexit cleanup
 
+# You might think that setting compression=off for $TESTFS1 would be
+# sufficient. You would be mistaken.
+# You need compression=off for whatever the parent of $TESTFS1 is,
+# and $TESTFS1.
+log_must zfs set compression=off $TESTPOOL
 log_must zfs create $TESTPOOL/$TESTFS1
 log_must mkfile 100m /$TESTPOOL/$TESTFS1/atestfile
 sync_pool $TESTPOOL
@@ -113,5 +118,7 @@ set_tunable32 LIVELIST_CONDENSE_ZTHR_PAUSE 0
 set_tunable32 LIVELIST_CONDENSE_SYNC_PAUSE 1
 disable_race LIVELIST_CONDENSE_SYNC_CANCEL
 delete_race LIVELIST_CONDENSE_SYNC_CANCEL
+
+log_must zfs inherit compression $TESTPOOL
 
 log_pass "Clone livelist condense race conditions passed."
