@@ -39,6 +39,7 @@ function cleanup
 	set_tunable64 LIVELIST_MAX_ENTRIES $ORIGINAL_MAX
 	# reset the minimum percent shared to 75
 	set_tunable32 LIVELIST_MIN_PERCENT_SHARED $ORIGINAL_MIN
+	log_must zfs inherit compression $TESTPOOL
 }
 
 function check_ll_len
@@ -126,6 +127,5 @@ log_must mkfile 5m /$TESTPOOL/$TESTFS1/atestfile
 log_must zfs snapshot $TESTPOOL/$TESTFS1@snap
 test_condense
 test_deactivated
-log_must zfs inherit compression $TESTPOOL
 
 log_pass "Clone's livelist condenses and disables as expected."

@@ -42,6 +42,7 @@ function cleanup
 	# reset the condense tests to 0
 	set_tunable32 LIVELIST_CONDENSE_ZTHR_PAUSE 0
 	set_tunable32 LIVELIST_CONDENSE_SYNC_PAUSE 0
+	log_must zfs inherit compression $TESTPOOL
 }
 
 function delete_race
@@ -119,6 +120,5 @@ set_tunable32 LIVELIST_CONDENSE_SYNC_PAUSE 1
 disable_race LIVELIST_CONDENSE_SYNC_CANCEL
 delete_race LIVELIST_CONDENSE_SYNC_CANCEL
 
-log_must zfs inherit compression $TESTPOOL
 
 log_pass "Clone livelist condense race conditions passed."
