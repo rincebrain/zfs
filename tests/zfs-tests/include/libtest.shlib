@@ -3713,9 +3713,10 @@ function zed_stop
 	log_note "Stopping ZED"
 	while true; do
 		zedpids="$(pgrep -x zed)"
+		zedpids2="$(pgrep -x lt-zed)"
 		[ "$?" -ne 0 ] && break
 
-		log_must kill $zedpids
+		log_must kill $zedpids $zedpids2
 		sleep 1
 	done
 	return 0
