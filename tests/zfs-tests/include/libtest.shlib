@@ -3567,17 +3567,19 @@ function wait_replacing #pool
 	done
 }
 
-#
 # Wait for a pool to be scrubbed
 #
 # $1 pool name
+# $2 timeout
 #
-function wait_scrubbed
+function wait_scrubbed #pool timeout
 {
-	typeset pool=${1:-$TESTPOOL}
-	while ! is_pool_scrubbed $pool ; do
-		sleep 1
-	done
+       typeset timeout=${2:-300}
+       typeset pool=${1:-$TESTPOOL}
+       for (( timer = 0; timer < $timeout; timer++ )); do
+               is_pool_scrubbed $pool && break;
+               sleep 1;
+       done
 }
 
 # Backup the zed.rc in our test directory so that we can edit it for our test.
