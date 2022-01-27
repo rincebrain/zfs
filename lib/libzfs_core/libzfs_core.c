@@ -842,9 +842,19 @@ lzc_send_space_resume_redacted(const char *snapname, const char *from,
 {
 	nvlist_t *args;
 	nvlist_t *result;
+	int pipefd[2];
 	int err;
+	pthread_t mythread;
+	sendargs_t sendargs;
+	int threadstatus;
+
+
+	err = pipe2(pipefd, O_CLOEXEC);
+
+	lzc_set_pipe_max(pipefd[0]);
 
 	args = fnvlist_alloc();
+	fnvlist_add_int32(args, "fd", pipefd[1]);
 	if (from != NULL)
 		fnvlist_add_string(args, "from", from);
 	if (flags & LZC_SEND_FLAG_LARGE_BLOCK)
@@ -862,14 +872,36 @@ lzc_send_space_resume_redacted(const char *snapname, const char *from,
 	}
 	if (redactbook != NULL)
 		fnvlist_add_string(args, "redactbook", redactbook);
+
+	sendargs.inputfd = pipefd[0];
 	if (fd != -1)
-		fnvlist_add_int32(args, "fd", fd);
+		sendargs.outputfd = fd;
+	sendargs.ioctlfd = pipefd[1];
+
+	pthread_create(&mythread, NULL, do_send_output, (void *)&sendargs);
 
 	err = lzc_ioctl(ZFS_IOC_SEND_SPACE, snapname, args, &result);
+
+	close(pipefd[1]);
+
+	pthread_join(mythread, (void *)&threadstatus);
+
 	nvlist_free(args);
+
 	if (err == 0)
 		*spacep = fnvlist_lookup_uint64(result, "space");
 	nvlist_free(result);
+
+	if (threadstatus != 0) {
+		err = threadstatus;
+		/*
+		 * if we don't set errno here, there are some edge cases
+		 * where we wind up dying unexpectedly with
+		 * "internal error: [normal warning msg]: Success"
+		 */
+		errno = threadstatus;
+	}
+
 	return (err);
 }
 
