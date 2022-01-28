@@ -1358,6 +1358,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		zil_commit(zilog, dstzp->z_id);
 	}
 
+	/*
+	 * TODO: We don't log access time update to ZIL of the source file system.
+	 */
 	ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
 	zfs_exit_two(srczfsvfs, dstzfsvfs);
 
