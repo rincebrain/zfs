@@ -1386,6 +1386,7 @@ zfs_clone_range_replay(znode_t *zp, uint64_t offset, uint64_t length,
 	ZFS_VERIFY_ZP(zp);
 
 	ASSERT(zfsvfs->z_replay);
+	ASSERT(!zfs_is_readonly(zfsvfs));
 
 	if (!spa_feature_is_enabled(dmu_objset_spa(zfsvfs->z_os),
 	    SPA_FEATURE_BLOCK_CLONING)) {
@@ -1397,27 +1398,6 @@ zfs_clone_range_replay(znode_t *zp, uint64_t offset, uint64_t length,
 		ZFS_EXIT(zfsvfs);
 		return (SET_ERROR(EINVAL));
 	}
-
-#if 0
-	/*
-	 * Callers might not be able to detect properly that we are read-only,
-	 * so check it explicitly here.
-	 */
-	if (zfs_is_readonly(zfsvfs)) {
-		ZFS_EXIT(zfsvfs);
-		return (SET_ERROR(EROFS));
-	}
-
-	/*
-	 * If immutable or not appending then return EPERM.
-	 * Intentionally allow ZFS_READONLY through here.
-	 * See zfs_zaccess_common()
-	 */
-	if ((zp->z_pflags & ZFS_IMMUTABLE)) {
-		ZFS_EXIT(zfsvfs);
-		return (SET_ERROR(EPERM));
-	}
-#endif
 
 	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
 	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
