@@ -3674,6 +3674,21 @@ function zed_cleanup
 }
 
 #
+# Check if ZED is currently running; if so, returns PIDs
+#
+function zed_check
+{
+	if ! is_linux; then
+		return
+	fi
+	zedpids="$(pgrep -x zed)"
+#	ret1=$?
+	zedpids2="$(pgrep -x lt-zed)"
+#	ret2=$?
+	echo ${zedpids} ${zedpids2}
+}
+
+#
 # Check if ZED is currently running, if not start ZED.
 #
 function zed_start
@@ -3688,9 +3703,14 @@ function zed_start
 	fi
 
 	# Verify the ZED is not already running.
-	pgrep -x zed > /dev/null
-	if (($? == 0)); then
-		log_note "ZED already running"
+	zedpids=$(zed_check)
+	if [ -n "$zedpids" ]; then
+		# We never, ever, really want it to just keep going if zed
+		# is already running - usually this implies our test cases
+		# will break very strangely because whatever we wanted to
+		# configure zed for won't be listening to our changes in the
+		# tmpdir
+		log_fail "ZED already running - ${zedpids}"
 	else
 		log_note "Starting ZED"
 		# run ZED in the background and redirect foreground logging
@@ -3709,16 +3729,15 @@ function zed_start
 function zed_stop
 {
 	if ! is_linux; then
-		return
+		return ""
 	fi
 
 	log_note "Stopping ZED"
 	while true; do
-		zedpids="$(pgrep -x zed)"
-		zedpids2="$(pgrep -x lt-zed)"
-		[ "$?" -ne 0 ] && break
+		zedpids=$(zed_check)
+		[ ! -n "$zedpids" ] && break
 
-		log_must kill $zedpids $zedpids2
+		log_must kill $zedpids
 		sleep 1
 	done
 	return 0
