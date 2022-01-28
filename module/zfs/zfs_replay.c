@@ -1054,8 +1054,16 @@ zfs_replay_clone(void *arg1, void *arg2, boolean_t byteswap)
 	if (byteswap)
 		byteswap_uint64_array(lr, sizeof (*lr));
 
-	if ((error = zfs_zget(zfsvfs, lr->lr_foid, &zp)) != 0)
+	if ((error = zfs_zget(zfsvfs, lr->lr_foid, &zp)) != 0) {
+		/*
+		 * Writes can be logged out of order, not sure about clones,
+		 * but just in case, if the file doesn't exist anymore just
+		 * return success.
+		 */
+		if (error == ENOENT)
+			error = 0;
 		return (error);
+	}
 
 	error = zfs_clone_range_replay(zp, lr->lr_offset, lr->lr_length,
 	    lr->lr_blksz, lr->lr_bps, lr->lr_nbps);
