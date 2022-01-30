@@ -163,7 +163,7 @@ extern const raidz_impl_ops_t vdev_raidz_avx512f_impl;
 #if defined(__x86_64) && defined(HAVE_AVX512BW)	/* only x86_64 for now */
 extern const raidz_impl_ops_t vdev_raidz_avx512bw_impl;
 #endif
-#if defined(__aarch64__)
+#if defined(__aarch64__) && !defined(__FreeBSD__)
 extern const raidz_impl_ops_t vdev_raidz_aarch64_neon_impl;
 extern const raidz_impl_ops_t vdev_raidz_aarch64_neonx2_impl;
 #endif

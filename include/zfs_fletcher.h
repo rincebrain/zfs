@@ -132,6 +132,10 @@ typedef struct fletcher_4_func {
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar_ops;
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar4_ops;
 
+#if defined(SIMD_MOED)
+_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar4_simd_ops;
+#endif
+
 #if defined(HAVE_SSE2)
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_sse2_ops;
 #endif

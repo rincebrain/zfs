@@ -47,11 +47,26 @@
 #include <sys/strings.h>
 #include <zfs_fletcher.h>
 
-static void
+#if defined(SIMD_MOED)
+#include <sys/simd.h>
+#endif
+
+#ifndef SIMD_MOED
+#define SIMD_MOED 0
+#endif
+
+#if SIMD_MOED == 0
+void
+fletcher_4_superscalar4_init(fletcher_4_ctx_t *ctx);
+void
 fletcher_4_superscalar4_init(fletcher_4_ctx_t *ctx)
 {
 	bzero(ctx->superscalar, 4 * sizeof (zfs_fletcher_superscalar_t));
 }
+#else
+extern void
+fletcher_4_superscalar4_init(fletcher_4_ctx_t *ctx);
+#endif
 
 static void
 fletcher_4_superscalar4_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
@@ -86,6 +101,10 @@ static void
 fletcher_4_superscalar4_native(fletcher_4_ctx_t *ctx,
     const void *buf, uint64_t size)
 {
+	#if (SIMD_MOED > 0)
+		kfpu_begin();
+	#endif
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
@@ -145,12 +164,20 @@ fletcher_4_superscalar4_native(fletcher_4_ctx_t *ctx,
 	ctx->superscalar[1].v[3] = b4;
 	ctx->superscalar[2].v[3] = c4;
 	ctx->superscalar[3].v[3] = d4;
+
+	#if (SIMD_MOED > 0)
+		kfpu_end();
+	#endif
 }
 
 static void
 fletcher_4_superscalar4_byteswap(fletcher_4_ctx_t *ctx,
     const void *buf, uint64_t size)
 {
+	#if (SIMD_MOED > 0)
+		kfpu_begin();
+	#endif
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
@@ -210,6 +237,11 @@ fletcher_4_superscalar4_byteswap(fletcher_4_ctx_t *ctx,
 	ctx->superscalar[1].v[3] = b4;
 	ctx->superscalar[2].v[3] = c4;
 	ctx->superscalar[3].v[3] = d4;
+
+	#if (SIMD_MOED > 0)
+		kfpu_end();
+	#endif
+
 }
 
 static boolean_t fletcher_4_superscalar4_valid(void)
@@ -217,7 +249,12 @@ static boolean_t fletcher_4_superscalar4_valid(void)
 	return (B_TRUE);
 }
 
-const fletcher_4_ops_t fletcher_4_superscalar4_ops = {
+const fletcher_4_ops_t
+#if SIMD_MOED > 0
+fletcher_4_superscalar4_simd_ops = {
+#else
+fletcher_4_superscalar4_ops = {
+#endif
 	.init_native = fletcher_4_superscalar4_init,
 	.compute_native = fletcher_4_superscalar4_native,
 	.fini_native = fletcher_4_superscalar4_fini,
@@ -226,4 +263,7 @@ const fletcher_4_ops_t fletcher_4_superscalar4_ops = {
 	.fini_byteswap = fletcher_4_superscalar4_fini,
 	.valid = fletcher_4_superscalar4_valid,
 	.name = "superscalar4"
+	#if SIMD_MOED > 0
+	"-simd"
+	#endif
 };

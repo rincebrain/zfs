@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2020 iXsystems, Inc.
- * All rights reserved.
+ * Copyright (c) 2021 Klara, Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -26,20 +25,22 @@
  * $FreeBSD$
  */
 
+#include <sys/types.h>
+#include <sys/cdefs.h>
+#include <sys/proc.h>
+#include <sys/systm.h>
 
-#ifndef _FREEBSD_SIMD_H
-#define	_FREEBSD_SIMD_H
-#if defined(__amd64__) || defined(__i386__)
-#include <sys/simd_x86.h>
-#elif defined(__aarch64__)
-#include <sys/simd_aarch64.h>
-#else
+#include <machine/pcb.h>
 
-#define	kfpu_allowed()		0
-#define	kfpu_initialize(tsk)	do {} while (0)
-#define	kfpu_begin()		do {} while (0)
-#define	kfpu_end()		do {} while (0)
 #define	kfpu_init()		(0)
 #define	kfpu_fini()		do {} while (0)
-#endif
-#endif
+#define	kfpu_allowed()		1
+#define	kfpu_initialize(tsk)	do {} while (0)
+
+#define	kfpu_begin() { \
+		fpu_kern_enter(curthread, NULL, FPU_KERN_NOCTX);\
+}
+
+#define	kfpu_end()	{			\
+		fpu_kern_leave(curthread, NULL);	\
+}

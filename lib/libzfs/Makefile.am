@@ -54,6 +54,7 @@ KERNEL_C = \
 	zfs_deleg.c \
 	zfs_fletcher.c \
 	zfs_fletcher_aarch64_neon.c \
+	zfs_fletcher_aarch64_neon_unsafe.c \
 	zfs_fletcher_avx512.c \
 	zfs_fletcher_intel.c \
 	zfs_fletcher_sse.c \

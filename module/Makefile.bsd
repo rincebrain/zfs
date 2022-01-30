@@ -183,6 +183,28 @@ SRCS+=	zfeature_common.c \
 	zpool_prop.c \
 	zprop_common.c
 
+.if ${MACHINE_ARCH} == "aarch64"
+OBJS+= zfs_fletcher_aarch64_neon.o zfs_fletcher_aarch64_neon_unsafe.o 
+# We only want some of the functions from zfs_fletcher_aarch64_neon to
+# wind up NEON-ified, so we break them out lest FreeBSD get upset in
+# the kernel
+
+# Remove -nostdinc so we can get the intrinsics.
+zfs_fletcher_aarch64_neon_unsafe.o: zfs_fletcher_aarch64_neon_unsafe.c
+	${CC} ${CFLAGS:C/^-O2$/-O3/:N-nostdinc:N-mgeneral-regs-only} \
+	    -c ${.IMPSRC} -o ${.TARGET}
+	${CTFCONVERT_CMD}
+.endif
+
+OBJS+= zfs_fletcher_superscalar4_simd.o 
+# We're going to ask the compiler to make this as fast as it possibly can
+
+# Remove -nostdinc so we can get the intrinsics.
+zfs_fletcher_superscalar4_simd.o: zfs_fletcher_superscalar4.c
+	${CC} ${CFLAGS:C/^-O2$/-Os/:N-nostdinc:N-mgeneral-regs-only} -mtune=native -DSIMD_MOED=1 -ftree-vectorize \
+	    -c zcommon/zfs_fletcher_superscalar4.c -o ${.TARGET}
+	${CTFCONVERT_CMD}
+
 #zfs
 SRCS+=	abd.c \
 	aggsum.c \
@@ -311,6 +333,17 @@ SRCS+=	abd.c \
 	zthr.c \
 	zvol.c
 
+
+#.if ${MACHINE_ARCH} == "aarch64"
+#OBJS+= vdev_raidz_math_aarch64_neon.o vdev_raidz_math_aarch64_neonx2.o
+## Remove -nostdinc so we can get the intrinsics.
+#vdev_raidz_math_aarch64_neon.o vdev_raidz_math_aarch64_neonx2.o: \
+#    vdev_raidz_math_aarch64_neon.c vdev_raidz_math_aarch64_neonx2.c
+#	${CC} ${CFLAGS:C/^-O2$/-O3/:N-nostdinc:N-mgeneral-regs-only} \
+#		-c ${.IMPSRC} -o ${.TARGET}
+#	${CTFCONVERT_CMD}
+#.endif
+
 #zstd
 SRCS+=	zfs_zstd.c \
 	zstd.c
@@ -340,10 +373,11 @@ CFLAGS.abd.c= -Wno-cast-qual
 CFLAGS.zfs_log.c= -Wno-cast-qual
 CFLAGS.zfs_vnops_os.c= -Wno-pointer-arith
 CFLAGS.u8_textprep.c= -Wno-cast-qual
-CFLAGS.zfs_fletcher.c= -Wno-cast-qual -Wno-pointer-arith
+CFLAGS.zfs_fletcher.c= -Wno-cast-qual -Wno-pointer-arith -DSIMD_MOED=1
 CFLAGS.zfs_fletcher_intel.c= -Wno-cast-qual -Wno-pointer-arith
 CFLAGS.zfs_fletcher_sse.c= -Wno-cast-qual -Wno-pointer-arith
 CFLAGS.zfs_fletcher_avx512.c= -Wno-cast-qual -Wno-pointer-arith
+CFLAGS.zfs_fletcher_aarch64_neon_unsafe.c= -Wno-cast-qual -Wno-pointer-arith
 CFLAGS.zprop_common.c= -Wno-cast-qual
 CFLAGS.ddt.c= -Wno-cast-qual
 CFLAGS.dmu.c= -Wno-cast-qual
@@ -364,6 +398,8 @@ CFLAGS.vdev_raidz_math_scalar.c= -Wno-cast-qual
 CFLAGS.vdev_raidz_math_avx2.c= -Wno-cast-qual -Wno-duplicate-decl-specifier
 CFLAGS.vdev_raidz_math_avx512f.c= -Wno-cast-qual -Wno-duplicate-decl-specifier
 CFLAGS.vdev_raidz_math_sse2.c= -Wno-cast-qual -Wno-duplicate-decl-specifier
+CFLAGS.vdev_raidz_math_aarch64_neon.c= -Wno-cast-qual
+CFLAGS.vdev_raidz_math_aarch64_neonx2.c= -Wno-cast-qual
 CFLAGS.zap_leaf.c= -Wno-cast-qual
 CFLAGS.zap_micro.c= -Wno-cast-qual
 CFLAGS.zcp.c= -Wno-cast-qual
