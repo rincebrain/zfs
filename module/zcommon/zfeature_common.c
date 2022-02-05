@@ -716,7 +716,7 @@ zpool_feature_init(void)
 
 	zfeature_register(SPA_FEATURE_BLOCK_CLONING,
 	    "com.fudosecurity:block_cloning", "block_cloning",
-	    "Block cloning through fclonefile(2) system call.",
+	    "Support for block cloning via Block Reference Table.",
 	    ZFEATURE_FLAG_READONLY_COMPAT, ZFEATURE_TYPE_BOOLEAN, NULL,
 	    sfeatures);
 
