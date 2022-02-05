@@ -820,5 +820,56 @@ zfs_log_acl(zilog_t *zilog, dmu_tx_t *tx, znode_t *zp,
 	zil_itx_assign(zilog, itx, tx);
 }
 
+/*
+ * Handles TX_CLONE transactions.
+ */
+void
+zfs_log_clone(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
+    int ioflag, uint64_t offset, uint64_t length, uint64_t blksz,
+    const blkptr_t *bps, size_t nbps)
+{
+	itx_t *itx;
+	lr_clone_t *lr;
+	uint64_t len, max_log_data;
+	size_t i, partnbps;
+
+	if (zil_replaying(zilog, tx) || zp->z_unlinked)
+	    /* XXX: zfs_xattr_owner_unlinked(zp)? */
+		return;
+
+	max_log_data = zil_max_log_data(zilog, sizeof (lr_clone_t));
+
+	do {
+		partnbps = MIN(nbps, max_log_data / sizeof(bps[0]));
+		len = 0;
+		for (i = 0; i < partnbps; i++) {
+			len += BP_GET_LSIZE(&bps[i]);
+		}
+		len = MIN(len, length);
+
+		itx = zil_itx_create(txtype,
+		    sizeof (*lr) + sizeof(bps[0]) * partnbps);
+		lr = (lr_clone_t *)&itx->itx_lr;
+		lr->lr_foid = zp->z_id;
+		lr->lr_offset = offset;
+		lr->lr_length = len;
+		lr->lr_blksz = blksz;
+		lr->lr_nbps = partnbps;
+		bcopy(bps, lr->lr_bps, sizeof(bps[0]) * partnbps);
+
+		itx->itx_sync =
+		    ((ioflag & (O_SYNC | O_DSYNC)) != 0 || zp->z_sync_cnt != 0);
+
+		zil_itx_assign(zilog, itx, tx);
+
+		bps += partnbps;
+		ASSERT3U(nbps, >=, partnbps);
+		nbps -= partnbps;
+		offset += len;
+		ASSERT3U(length, >=, len);
+		length -= len;
+	} while (nbps > 0);
+}
+
 ZFS_MODULE_PARAM(zfs, zfs_, immediate_write_sz, LONG, ZMOD_RW,
 	"Largest data block to write to zil");

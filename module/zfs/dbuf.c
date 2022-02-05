@@ -1429,7 +1429,7 @@ dbuf_handle_indirect_hole(dmu_buf_impl_t *db, dnode_t *dn, blkptr_t *dbbp)
  * was taken, ENOENT if no action was taken.
  */
 static int
-dbuf_read_hole(dmu_buf_impl_t *db, dnode_t *dn)
+dbuf_read_hole(dmu_buf_impl_t *db, dnode_t *dn, blkptr_t *bp)
 {
 	ASSERT(MUTEX_HELD(&db->db_mtx));
 
@@ -1543,7 +1543,35 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags,
 		goto early_unlock;
 	}
 
-	err = dbuf_read_hole(db, dn);
+	if (db->db_state == DB_UNCACHED) {
+		if (db->db_blkptr == NULL) {
+			bpp = NULL;
+		} else {
+			bp = *db->db_blkptr;
+			bpp = &bp;
+		}
+	} else {
+		struct dirty_leaf *dl;
+		dbuf_dirty_record_t *dr;
+
+		ASSERT3S(db->db_state, ==, DB_NOFILL);
+
+		dr = list_head(&db->db_dirty_records);
+		if (dr == NULL) {
+			err = EIO;
+			goto early_unlock;
+		} else {
+			dl = &dr->dt.dl;
+			if (!dl->dr_brtwrite) {
+				err = EIO;
+				goto early_unlock;
+			}
+			bp = dl->dr_overridden_by;
+			bpp = &bp;
+		}
+	}
+
+	err = dbuf_read_hole(db, dn, bpp);
 	if (err == 0)
 		goto early_unlock;
 
@@ -1598,10 +1626,9 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags,
 	if ((flags & DB_RF_NO_DECRYPT) && BP_IS_PROTECTED(db->db_blkptr))
 		zio_flags |= ZIO_FLAG_RAW;
 	/*
-	 * TODO: Move this comment.
-	 * The zio layer will copy the provided blkptr later, but we need to
-	 * do this now so that we can release the parent's rwlock. We have to
-	 * do that now so that if dbuf_read_done is called synchronously (on
+	 * The zio layer will copy the provided blkptr later, but we have our
+	 * own copy so that we can release the parent's rwlock. We have to
+	 * do that so that if dbuf_read_done is called synchronously (on
 	 * an l1 cache hit) we don't acquire the db_mtx while holding the
 	 * parent's rwlock, which would be a lock ordering violation.
 	 */
