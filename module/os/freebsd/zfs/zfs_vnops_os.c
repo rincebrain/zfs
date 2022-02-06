@@ -6353,11 +6353,11 @@ struct clonefile_lock {
 	struct file	*srcfp;
 	int		 srcioflag;
 	struct vnode	*srcvp;
-	int		 srcvnlock;
+	boolean_t	 srcvnlock;
 	struct file	*dstfp;
 	int		 dstioflag;
 	struct vnode	*dstvp;
-	int		 dstvnlock;
+	boolean_t	 dstvnlock;
 	struct mount	*dstmp;
 };
 
