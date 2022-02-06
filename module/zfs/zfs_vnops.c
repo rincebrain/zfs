@@ -1086,6 +1086,12 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		return (error);
 	}
 
+	if (!spa_feature_is_enabled(dmu_objset_spa(dstzfsvfs->z_os),
+	    SPA_FEATURE_BLOCK_CLONING)) {
+		zfs_exit_two(srczfsvfs, dstzfsvfs);
+		return (SET_ERROR(EOPNOTSUPP));
+	}
+
 	/*
 	 * We don't copy source file's flags that's why we don't allow to clone
 	 * files that are in quarantine.
@@ -1102,12 +1108,6 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	    dmu_objset_spa(dstzfsvfs->z_os)) {
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (SET_ERROR(EXDEV));
-	}
-
-	if (!spa_feature_is_enabled(dmu_objset_spa(dstzfsvfs->z_os),
-	    SPA_FEATURE_BLOCK_CLONING)) {
-		zfs_exit_two(srczfsvfs, dstzfsvfs);
-		return (SET_ERROR(EOPNOTSUPP));
 	}
 
 	if (srcoffset >= srczp->z_size) {
