@@ -93,7 +93,7 @@ typedef struct brt_vdev {
 	uint64_t	bv_drefsize;
 	uint64_t	bv_dsize;
 	/*
-	 * bv_refcount[] potentially can be a bit to big to sychronize it all
+	 * bv_refcount[] potentially can be a bit too big to sychronize it all
 	 * when we just changed few refcounts. The fields below allow us to
 	 * track updates to bv_refcount[] array since the last sync.
 	 * A single bit in the bv_bitmap represents as many refcounts as can
@@ -138,16 +138,12 @@ typedef struct brt_key {
 
 #define	BRT_KEY_WORDS	(sizeof (brt_key_t) / sizeof (uint64_t))
 
-typedef struct brt_phys {
-	uint64_t	brp_refcnt;
-} brt_phys_t;
-
 /*
  * In-core brt entry
  */
 typedef struct brt_entry {
 	brt_key_t	bre_key;
-	brt_phys_t	bre_phys;
+	uint64_t	bre_refcount;
 	avl_node_t	bre_node;
 } brt_entry_t;
 
@@ -222,28 +218,6 @@ brt_key_fill(brt_key_t *brk, const blkptr_t *bp)
 
 	brk->brk_vdev = DVA_GET_VDEV(&bp->blk_dva[0]);
 	brk->brk_offset = DVA_GET_OFFSET(&bp->blk_dva[0]);
-}
-
-static void
-brt_phys_addref(brt_phys_t *brp)
-{
-	brp->brp_refcnt++;
-}
-
-static boolean_t
-brt_phys_decref(brt_phys_t *brp)
-{
-
-	ASSERT(brp->brp_refcnt > 0);
-	brp->brp_refcnt--;
-
-	return (brp->brp_refcnt == 0);
-}
-
-static uint64_t
-brt_phys_total_refcnt(const brt_entry_t *bre)
-{
-	return (bre->bre_phys.brp_refcnt);
 }
 
 #ifdef ZFS_BRT_DEBUG
@@ -379,43 +353,6 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	VERIFY0(zap_remove(brt->brt_os, DMU_POOL_DIRECTORY_OBJECT, name, tx));
 
 	brtvd->bv_object = 0;
-}
-
-static void
-brt_vdev_sync_one(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
-{
-	dmu_buf_t *db;
-	brt_vdev_phys_t *bvphys;
-
-	ASSERT(brtvd->bv_dirty);
-
-	if (brtvd->bv_object == 0) {
-		/*
-		 * No BRT VDEV object for this VDEV yet, allocate one.
-		 */
-		brt_vdev_create(brt, brtvd, tx);
-	}
-
-	ASSERT(dmu_tx_is_syncing(tx));
-
-	VERIFY0(dmu_bonus_hold(brt->brt_os, brtvd->bv_object, FTAG, &db));
-
-	/*
-	 * TODO: Walk through brtvd->bv_bitmap and write only dirty parts.
-	 */
-	dmu_write(brt->brt_os, brtvd->bv_object, 0,
-	    brtvd->bv_size * sizeof (uint64_t), brtvd->bv_refcount, tx);
-
-	dmu_buf_will_dirty(db, tx);
-	bvphys = db->db_data;
-	bvphys->bvp_size = brtvd->bv_size;
-	bvphys->bvp_count = brtvd->bv_count;
-	bvphys->bvp_drefsize = brtvd->bv_drefsize;
-	bvphys->bvp_dsize = brtvd->bv_dsize;
-	dmu_buf_rele(db, FTAG);
-
-	bzero(brtvd->bv_bitmap, BT_SIZEOFMAP(brtvd->bv_nblocks));
-	brtvd->bv_dirty = FALSE;
 }
 
 static void
@@ -561,7 +498,7 @@ brt_vdev_addref(brt_t *brt, const brt_entry_t *bre, uint64_t dsize)
 
 	brtvd->bv_dsize += dsize;
 	brt->brt_dsize += dsize;
-	if (brt_phys_total_refcnt(bre) == 1) {
+	if (bre->bre_refcount == 1) {
 		brtvd->bv_drefsize += dsize;
 		brt->brt_drefsize += dsize;
 	}
@@ -597,13 +534,50 @@ brt_vdev_decref(brt_t *brt, const brt_entry_t *bre, uint64_t dsize)
 
 	brtvd->bv_dsize -= dsize;
 	brt->brt_dsize -= dsize;
-	if (brt_phys_total_refcnt(bre) == 0) {
+	if (bre->bre_refcount == 0) {
 		brtvd->bv_drefsize -= dsize;
 		brt->brt_drefsize -= dsize;
 	}
 #ifdef ZFS_BRT_DEBUG
 	brt_vdev_dump(brt);
 #endif
+}
+
+static void
+brt_vdev_sync_one(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
+{
+	dmu_buf_t *db;
+	brt_vdev_phys_t *bvphys;
+
+	ASSERT(brtvd->bv_dirty);
+
+	if (brtvd->bv_object == 0) {
+		/*
+		 * No BRT VDEV object for this VDEV yet, allocate one.
+		 */
+		brt_vdev_create(brt, brtvd, tx);
+	}
+
+	ASSERT(dmu_tx_is_syncing(tx));
+
+	VERIFY0(dmu_bonus_hold(brt->brt_os, brtvd->bv_object, FTAG, &db));
+
+	/*
+	 * TODO: Walk through brtvd->bv_bitmap and write only dirty parts.
+	 */
+	dmu_write(brt->brt_os, brtvd->bv_object, 0,
+	    brtvd->bv_size * sizeof (uint64_t), brtvd->bv_refcount, tx);
+
+	dmu_buf_will_dirty(db, tx);
+	bvphys = db->db_data;
+	bvphys->bvp_size = brtvd->bv_size;
+	bvphys->bvp_count = brtvd->bv_count;
+	bvphys->bvp_drefsize = brtvd->bv_drefsize;
+	bvphys->bvp_dsize = brtvd->bv_dsize;
+	dmu_buf_rele(db, FTAG);
+
+	bzero(brtvd->bv_bitmap, BT_SIZEOFMAP(brtvd->bv_nblocks));
+	brtvd->bv_dirty = FALSE;
 }
 
 static void
@@ -738,11 +712,11 @@ brt_entry_lookup(brt_t *brt, brt_entry_t *bre)
 	if (error != 0)
 		return (error);
 	ASSERT3U(one, ==, 1);
-	ASSERT3U(physsize, ==, sizeof(bre->bre_phys));
+	ASSERT3U(physsize, ==, sizeof(bre->bre_refcount));
 
 	return (zap_lookup_uint64(brt->brt_os, brt->brt_object,
-	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1, sizeof(bre->bre_phys),
-	    &bre->bre_phys));
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1,
+	    sizeof(bre->bre_refcount), &bre->bre_refcount));
 }
 
 static void
@@ -761,8 +735,8 @@ brt_entry_update(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
 	ASSERT(brt_object_exists(brt));
 
 	return (zap_update_uint64(brt->brt_os, brt->brt_object,
-	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1, sizeof(bre->bre_phys),
-	    &bre->bre_phys, tx));
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1,
+	    sizeof(bre->bre_refcount), &bre->bre_refcount, tx));
 }
 
 static int
@@ -771,7 +745,7 @@ brt_entry_remove(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
 	if (!brt_object_exists(brt))
 		return (ENOENT);
 
-	ASSERT0(bre->bre_phys.brp_refcnt);
+	ASSERT0(bre->bre_refcount);
 
 	return (zap_remove_uint64(brt->brt_os, brt->brt_object,
 	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, tx));
@@ -910,15 +884,15 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 		brt_enter(brt);
 
 		racebre = avl_find(&brt->brt_tree, &brk, &where);
-		if (racebre != NULL) {
+		if (racebre == NULL) {
+			avl_insert(&brt->brt_tree, bre, where);
+		} else {
 			BRTSTAT_BUMP(brt_addref_entry_read_lost_race);
 			brt_free(bre);
 			bre = racebre;
 		}
-		if (racebre == NULL)
-			avl_insert(&brt->brt_tree, bre, where);
 	}
-	brt_phys_addref(&bre->bre_phys);
+	bre->bre_refcount++;
 	brt_vdev_addref(brt, bre, bp_get_dsize(brt->brt_spa, bp));
 	brt_exit(brt);
 }
@@ -981,13 +955,15 @@ out:
 		BRTSTAT_BUMP(brt_decref_no_entry);
 		return (B_TRUE);
 	}
-	if (brt_phys_total_refcnt(bre) == 0) {
+	if (bre->bre_refcount == 0) {
 		brt_exit(brt);
 		BRTSTAT_BUMP(brt_decref_free_data_now);
 		return (B_TRUE);
 	}
 
-	if (brt_phys_decref(&bre->bre_phys))
+	ASSERT(bre->bre_refcount > 0);
+	bre->bre_refcount--;
+	if (bre->bre_refcount == 0)
 		BRTSTAT_BUMP(brt_decref_free_data_later);
 	else
 		BRTSTAT_BUMP(brt_decref_entry_still_referenced);
@@ -1227,9 +1203,7 @@ brt_unload(spa_t *spa)
 static void
 brt_sync_entry(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx, uint64_t txg)
 {
-	brt_phys_t *brp = &bre->bre_phys;
-
-	if (brp->brp_refcnt == 0) {
+	if (bre->bre_refcount == 0) {
 		int error;
 
 		error = brt_entry_remove(brt, bre, tx);
