@@ -216,69 +216,6 @@ brt_exit(brt_t *brt)
 	mutex_exit(&brt->brt_lock);
 }
 
-static int
-brt_zap_create(objset_t *os, uint64_t *objectp, dmu_tx_t *tx)
-{
-	zap_flags_t flags = ZAP_FLAG_HASH64 | ZAP_FLAG_UINT64_KEY;
-
-	*objectp = zap_create_flags(os, 0, flags, DMU_OTN_ZAP_METADATA,
-	    brt_zap_leaf_blockshift, brt_zap_indirect_blockshift,
-	    DMU_OT_NONE, 0, tx);
-
-	return (*objectp == 0 ? SET_ERROR(ENOTSUP) : 0);
-}
-
-static int
-brt_zap_destroy(objset_t *os, uint64_t object, dmu_tx_t *tx)
-{
-	return (zap_destroy(os, object, tx));
-}
-
-static int
-brt_zap_lookup(objset_t *os, uint64_t object, brt_entry_t *bre)
-{
-	uint64_t one, physsize;
-	int error;
-
-	error = zap_length_uint64(os, object, (uint64_t *)&bre->bre_key,
-	    BRT_KEY_WORDS, &one, &physsize);
-	if (error)
-		return (error);
-
-	ASSERT(one == 1);
-	ASSERT(physsize == sizeof(bre->bre_phys));
-
-	return (zap_lookup_uint64(os, object, (uint64_t *)&bre->bre_key,
-	    BRT_KEY_WORDS, 1, sizeof(bre->bre_phys), &bre->bre_phys));
-}
-
-static void
-brt_zap_prefetch(objset_t *os, uint64_t object, brt_entry_t *bre)
-{
-	(void) zap_prefetch_uint64(os, object, (uint64_t *)&bre->bre_key,
-	    BRT_KEY_WORDS);
-}
-
-static int
-brt_zap_update(objset_t *os, uint64_t object, brt_entry_t *bre, dmu_tx_t *tx)
-{
-	return (zap_update_uint64(os, object, (uint64_t *)&bre->bre_key,
-	    BRT_KEY_WORDS, 1, sizeof(bre->bre_phys), &bre->bre_phys, tx));
-}
-
-static int
-brt_zap_remove(objset_t *os, uint64_t object, brt_entry_t *bre, dmu_tx_t *tx)
-{
-	return (zap_remove_uint64(os, object, (uint64_t *)&bre->bre_key,
-	    BRT_KEY_WORDS, tx));
-}
-
-static int
-brt_zap_count(objset_t *os, uint64_t object, uint64_t *count)
-{
-	return (zap_count(os, object, count));
-}
-
 static void
 brt_key_fill(brt_key_t *brk, const blkptr_t *bp)
 {
@@ -326,25 +263,28 @@ brt_vdev_dump(brt_t *brt)
 		uint64_t idx;
 
 		brtvd = &brt->brt_vdevs[vdevid];
-		printf("[vdevid=%ju/%ju] dirty=%d size=%ju count=%ju nblocks=%ju bitmapsize=%ju\n",
+		printf("  vdevid=%ju/%ju dirty=%d size=%ju count=%ju nblocks=%ju bitmapsize=%ju\n",
 		    (uintmax_t)vdevid, (uintmax_t)brtvd->bv_vdev,
 		    brtvd->bv_dirty, (uintmax_t)brtvd->bv_size,
 		    (uintmax_t)brtvd->bv_count, (uintmax_t)brtvd->bv_nblocks,
 		    (uintmax_t)BT_SIZEOFMAP(brtvd->bv_nblocks));
-		if (!brtvd->bv_dirty)
-			continue;
-		printf("refcounts:\n");
-		for (idx = 0; idx < brtvd->bv_size; idx++) {
-			if (brtvd->bv_refcount[idx] > 0) {
-				printf("  [%04ju] %ju\n", (uintmax_t)idx,
-				    (uintmax_t)brtvd->bv_refcount[idx]);
+		if (brtvd->bv_count > 0) {
+			printf("    refcounts:\n");
+			for (idx = 0; idx < brtvd->bv_size; idx++) {
+				if (brtvd->bv_refcount[idx] > 0) {
+					printf("      [%04ju] %ju\n",
+					    (uintmax_t)idx,
+					    (uintmax_t)brtvd->bv_refcount[idx]);
+				}
 			}
 		}
-		printf("bitmap: ");
-		for (idx = 0; idx < brtvd->bv_nblocks; idx++) {
-			printf("%d", BT_TEST(brtvd->bv_bitmap, idx));
+		if (brtvd->bv_dirty) {
+			printf("    bitmap: ");
+			for (idx = 0; idx < brtvd->bv_nblocks; idx++) {
+				printf("%d", BT_TEST(brtvd->bv_bitmap, idx));
+			}
+			printf("\n");
 		}
-		printf("\n");
 	}
 }
 #endif
@@ -728,47 +668,44 @@ brt_object_exists(brt_t *brt)
 }
 
 static int
-brt_object_count(brt_t *brt, uint64_t *count)
+brt_object_count(brt_t *brt, uint64_t *countp)
 {
 	ASSERT(brt_object_exists(brt));
 
-	return (brt_zap_count(brt->brt_os, brt->brt_object, count));
+	return (zap_count(brt->brt_os, brt->brt_object, countp));
 }
 
 static void
 brt_object_create(brt_t *brt, dmu_tx_t *tx)
 {
-	spa_t *spa = brt->brt_spa;
-	objset_t *os = brt->brt_os;
-	uint64_t *objectp = &brt->brt_object;
+	ASSERT0(brt->brt_object);
+	brt->brt_object = zap_create_flags(brt->brt_os, 0,
+	    ZAP_FLAG_HASH64 | ZAP_FLAG_UINT64_KEY, DMU_OTN_ZAP_METADATA,
+	    brt_zap_leaf_blockshift, brt_zap_indirect_blockshift, DMU_OT_NONE,
+	    0, tx);
+	ASSERT(brt->brt_object != 0);
 
-	ASSERT(*objectp == 0);
-	VERIFY0(brt_zap_create(os, objectp, tx));
-	ASSERT(*objectp != 0);
+	VERIFY0(zap_add(brt->brt_os, DMU_POOL_DIRECTORY_OBJECT,
+	    BRT_OBJECT_ENTRIES_NAME, sizeof (uint64_t), 1, &brt->brt_object,
+	    tx));
 
-	VERIFY(zap_add(os, DMU_POOL_DIRECTORY_OBJECT, BRT_OBJECT_ENTRIES_NAME,
-	    sizeof (uint64_t), 1, objectp, tx) == 0);
-
-	spa_feature_incr(spa, SPA_FEATURE_BLOCK_CLONING, tx);
+	spa_feature_incr(brt->brt_spa, SPA_FEATURE_BLOCK_CLONING, tx);
 }
 
 static void
 brt_object_destroy(brt_t *brt, dmu_tx_t *tx)
 {
-	spa_t *spa = brt->brt_spa;
-	objset_t *os = brt->brt_os;
-	uint64_t *objectp = &brt->brt_object;
 	uint64_t count;
 
-	ASSERT(*objectp != 0);
+	ASSERT(brt->brt_object != 0);
 	VERIFY(brt_object_count(brt, &count) == 0 && count == 0);
-	VERIFY0(zap_remove(os, DMU_POOL_DIRECTORY_OBJECT,
+	VERIFY0(zap_remove(brt->brt_os, DMU_POOL_DIRECTORY_OBJECT,
 	    BRT_OBJECT_ENTRIES_NAME, tx));
-	VERIFY0(brt_zap_destroy(os, *objectp, tx));
+	VERIFY0(zap_destroy(brt->brt_os, brt->brt_object, tx));
 
-	spa_feature_decr(spa, SPA_FEATURE_BLOCK_CLONING, tx);
+	spa_feature_decr(brt->brt_spa, SPA_FEATURE_BLOCK_CLONING, tx);
 
-	*objectp = 0;
+	brt->brt_object = 0;
 }
 
 static int
@@ -785,8 +722,10 @@ brt_object_load(brt_t *brt)
 }
 
 static int
-brt_object_lookup(brt_t *brt, brt_entry_t *bre)
+brt_entry_lookup(brt_t *brt, brt_entry_t *bre)
 {
+	uint64_t one, physsize;
+	int error;
 
 	if (!brt_object_exists(brt))
 		return (SET_ERROR(ENOENT));
@@ -794,34 +733,48 @@ brt_object_lookup(brt_t *brt, brt_entry_t *bre)
 	if (!brt_vdev_lookup(brt, bre))
 		return (SET_ERROR(ENOENT));
 
-	return (brt_zap_lookup(brt->brt_os, brt->brt_object, bre));
+	error = zap_length_uint64(brt->brt_os, brt->brt_object,
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, &one, &physsize);
+	if (error != 0)
+		return (error);
+	ASSERT3U(one, ==, 1);
+	ASSERT3U(physsize, ==, sizeof(bre->bre_phys));
+
+	return (zap_lookup_uint64(brt->brt_os, brt->brt_object,
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1, sizeof(bre->bre_phys),
+	    &bre->bre_phys));
 }
 
 static void
-brt_object_prefetch(brt_t *brt, brt_entry_t *bre)
+brt_entry_prefetch(brt_t *brt, brt_entry_t *bre)
 {
 	if (!brt_object_exists(brt))
 		return;
 
-	brt_zap_prefetch(brt->brt_os, brt->brt_object, bre);
+	(void) zap_prefetch_uint64(brt->brt_os, brt->brt_object,
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS);
 }
 
 static int
-brt_object_update(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
+brt_entry_update(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
 {
 	ASSERT(brt_object_exists(brt));
 
-	return (brt_zap_update(brt->brt_os, brt->brt_object, bre, tx));
+	return (zap_update_uint64(brt->brt_os, brt->brt_object,
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, 1, sizeof(bre->bre_phys),
+	    &bre->bre_phys, tx));
 }
 
 static int
-brt_object_remove(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
+brt_entry_remove(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx)
 {
-
 	if (!brt_object_exists(brt))
 		return (ENOENT);
 
-	return (brt_zap_remove(brt->brt_os, brt->brt_object, bre, tx));
+	ASSERT0(bre->bre_phys.brp_refcnt);
+
+	return (zap_remove_uint64(brt->brt_os, brt->brt_object,
+	    (uint64_t *)&bre->bre_key, BRT_KEY_WORDS, tx));
 }
 
 /*
@@ -947,7 +900,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 
 		brt_exit(brt);
 
-		error = brt_object_lookup(brt, bre);
+		error = brt_entry_lookup(brt, bre);
 		ASSERT(error == 0 || error == ENOENT);
 		if (error == 0)
 			BRTSTAT_BUMP(brt_addref_entry_on_disk);
@@ -996,7 +949,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 
 	brt_exit(brt);
 
-	error = brt_object_lookup(brt, bre);
+	error = brt_entry_lookup(brt, bre);
 	ASSERT(error == 0 || error == ENOENT);
 
 	brt_enter(brt);
@@ -1057,7 +1010,7 @@ brt_prefetch(brt_t *brt, const blkptr_t *bp)
 
 	brt_key_fill(&bre.bre_key, bp);
 
-	brt_object_prefetch(brt, &bre);
+	brt_entry_prefetch(brt, &bre);
 }
 
 void
@@ -1279,17 +1232,17 @@ brt_sync_entry(brt_t *brt, brt_entry_t *bre, dmu_tx_t *tx, uint64_t txg)
 	if (brp->brp_refcnt == 0) {
 		int error;
 
-		error = brt_object_remove(brt, bre, tx);
+		error = brt_entry_remove(brt, bre, tx);
 		ASSERT(error == 0 || error == ENOENT);
 		/*
 		 * If error == ENOENT then fclonefile(2) was done from a removed
 		 * (but opened) file (open(), unlink()).
 		 */
-		ASSERT(brt_object_lookup(brt, bre) == ENOENT);
+		ASSERT(brt_entry_lookup(brt, bre) == ENOENT);
 	} else {
 		if (!brt_object_exists(brt))
 			brt_object_create(brt, tx);
-		VERIFY0(brt_object_update(brt, bre, tx));
+		VERIFY0(brt_entry_update(brt, bre, tx));
 	}
 }
 
