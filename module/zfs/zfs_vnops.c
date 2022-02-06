@@ -1056,6 +1056,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	blkptr_t	*bps;
 	size_t		nbps;
 	boolean_t	frsync = B_FALSE;
+	uint64_t	clear_setid_bits_txg = 0;
 
 	*donep = 0;
 
@@ -1286,31 +1287,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		dmu_brt_addref(dstzfsvfs->z_os, dstzp->z_id, dstoffset, size,
 		    tx, bps, nbps);
 
-		/*
-		 * Clear Set-UID/Set-GID bits on successful write if not
-		 * privileged and at least one of the excute bits is set.
-		 *
-		 * It would be nice to to this after all clones have
-		 * been done, but that would still expose the ISUID/ISGID
-		 * to another app after the partial clone is committed.
-		 *
-		 * Note: we don't call zfs_fuid_map_id() here because
-		 * user 0 is not an ephemeral uid.
-		 */
-		mutex_enter(&dstzp->z_acl_lock);
-		if ((dstzp->z_mode & (S_IXUSR | (S_IXUSR >> 3) |
-		    (S_IXUSR >> 6))) != 0 &&
-		    (dstzp->z_mode & (S_ISUID | S_ISGID)) != 0 &&
-		    secpolicy_vnode_setid_retain(dstzp, cr,
-		    (dstzp->z_mode & S_ISUID) != 0 && dstzp->z_uid == 0) != 0) {
-			uint64_t newmode;
-			dstzp->z_mode &= ~(S_ISUID | S_ISGID);
-			newmode = dstzp->z_mode;
-			(void) sa_update(dstzp->z_sa_hdl,
-			    SA_ZPL_MODE(dstzfsvfs), (void *)&newmode,
-			    sizeof (uint64_t), tx);
-		}
-		mutex_exit(&dstzp->z_acl_lock);
+		zfs_clear_setid_bits_if_necessary(dstzfsvfs, dstzp, cr,
+		    &clear_setid_bits_txg, tx);
 
 		zfs_tstamp_update_setup(dstzp, CONTENT_MODIFIED, mtime, ctime);
 
