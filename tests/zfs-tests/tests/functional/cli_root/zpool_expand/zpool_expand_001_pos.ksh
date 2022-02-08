@@ -152,7 +152,10 @@ for type in " " mirror raidz draid; do
 			    grep "(+${expansion_size})" >/dev/null 2>&1
 
 			if [[ $? -ne 0 ]]; then
-				log_fail "pool $TESTPOOL has not expanded"
+			zpool history -il $TESTPOOL1 | \
+			    grep "pool '$TESTPOOL1' size:" | \
+			    grep "vdev online" 
+				log_fail "pool $TESTPOOL has not expanded (expected: ${expansion_size})"
 			fi
 		else
 			typeset expansion_size=$((3*($exp_size-$org_size)))
