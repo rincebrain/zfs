@@ -128,6 +128,7 @@ function test_common
 
 	log_must zpool import -d $DEVICE_DIR -T $txg $TESTPOOL1
 	log_must check_pool_config $TESTPOOL1 "$poolcheck"
+	log_must ismounted $(dirname $MD5FILE | cut -c 2-)
 
 	log_must verify_data_md5sums $MD5FILE
 

@@ -1,12 +1,16 @@
-name: zfs-tests-sanity
+name: zfs-tests-qnd
 
 on:
   push:
   pull_request:
 
 jobs:
-  tests:
-    runs-on: ubuntu-20.04
+  tests-functional-ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [18.04, 20.04]
+    runs-on: ubuntu-${{ matrix.os }}
     steps:
     - uses: actions/checkout@v2
       with:
@@ -55,7 +59,7 @@ jobs:
         sudo dmesg -c >/var/tmp/dmesg-prerun
     - name: Tests
       run: |
-        /usr/share/zfs/zfs-tests.sh -vR -s 3G -r sanity
+        /usr/share/zfs/zfs-tests.sh -vR -s 3G -T zpool_import,zpool_expand,delegate,removal
       timeout-minutes: 330
     - name: Prepare artifacts
       if: failure()
