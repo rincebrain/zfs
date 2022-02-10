@@ -180,6 +180,7 @@ static const fletcher_4_ops_t *fletcher_4_impls[] = {
 #endif
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 	&fletcher_4_avx2_ops,
+	&fletcher_4_avx2_intrin_ops,
 #endif
 #if defined(__x86_64) && defined(HAVE_AVX512F)
 	&fletcher_4_avx512f_ops,
@@ -693,7 +694,7 @@ fletcher_4_benchmark_impl(boolean_t native, char *data, uint64_t data_size)
 		kpreempt_disable();
 		start = gethrtime();
 		do {
-			for (l = 0; l < 32; l++, run_count++)
+			for (l = 0; l < 128; l++, run_count++)
 				fletcher_4_test(data, data_size, NULL, &zc);
 
 			run_time_ns = gethrtime() - start;

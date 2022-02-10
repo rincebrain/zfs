@@ -101,6 +101,9 @@ typedef union fletcher_4_ctx {
 #endif
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 	zfs_fletcher_avx_t avx[4];
+#if defined(ZFS_INTRIN)
+	__m256i_u avxi[4];
+#endif
 #endif
 #if defined(__x86_64) && defined(HAVE_AVX512F)
 	zfs_fletcher_avx512_t avx512[4];
@@ -142,6 +145,7 @@ _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_ssse3_ops;
 
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_avx2_ops;
+_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_avx2_intrin_ops;
 #endif
 
 #if defined(__x86_64) && defined(HAVE_AVX512F)
