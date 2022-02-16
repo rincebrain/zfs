@@ -2164,18 +2164,37 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 		db = (dmu_buf_impl_t *)dbuf;
 		bp = db->db_blkptr;
 
+		/*
+		 * If the block is not on the disk yet (so has no BP assigned),
+		 * there is not much we can do...
+		 */
+		if (!list_is_empty(&db->db_dirty_records)) {
+			dbuf_dirty_record_t *dr;
+
+			dr = list_head(&db->db_dirty_records);
+			if (dr->dt.dl.dr_brtwrite) {
+				/*
+				 * This is very special case where we clone a
+				 * file and in the same transaction group we
+				 * clone the clone.
+				 */
+				bp = &dr->dt.dl.dr_overridden_by;
+			} else {
+				error = SET_ERROR(EAGAIN);
+				goto out;
+			}
+		}
 		if (bp == NULL) {
 			error = SET_ERROR(EAGAIN);
 			goto out;
 		}
 		if (dmu_buf_is_dirty(dbuf, tx)) {
-			error = SET_ERROR(EBUSY);
+			error = SET_ERROR(EAGAIN);
 			goto out;
 		}
-		if (!list_is_empty(&db->db_dirty_records)) {
-			error = SET_ERROR(EBUSY);
-			goto out;
-		}
+		/*
+		 * Make sure we clone only data blocks.
+		 */
 		if (BP_IS_METADATA(bp)) {
 			error = SET_ERROR(EFTYPE);
 			goto out;
