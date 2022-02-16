@@ -2176,8 +2176,7 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 			error = SET_ERROR(EBUSY);
 			goto out;
 		}
-		if (BP_GET_TYPE(bp) != DMU_OT_PLAIN_FILE_CONTENTS &&
-		    BP_GET_TYPE(bp) != DMU_OT_ZVOL) {
+		if (BP_IS_METADATA(bp)) {
 			error = SET_ERROR(EFTYPE);
 			goto out;
 		}
