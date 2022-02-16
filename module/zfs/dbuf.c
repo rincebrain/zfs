@@ -1913,7 +1913,8 @@ dbuf_unoverride(dbuf_dirty_record_t *dr)
 	 * the buf thawed to save the effort of freezing &
 	 * immediately re-thawing it.
 	 */
-	arc_release(dr->dt.dl.dr_data, db);
+	if (!dr->dt.dl.dr_brtwrite)
+		arc_release(dr->dt.dl.dr_data, db);
 }
 
 /*
@@ -1996,6 +1997,11 @@ dbuf_free_range(dnode_t *dn, uint64_t start_blkid, uint64_t end_blkid,
 				    db->db_blkid > dn->dn_maxblkid)
 					dn->dn_maxblkid = db->db_blkid;
 				dbuf_unoverride(dr);
+				if (dr->dt.dl.dr_brtwrite) {
+					ASSERT(db->db.db_data == NULL);
+					mutex_exit(&db->db_mtx);
+					continue;
+				}
 			} else {
 				/*
 				 * This dbuf is not dirty in the open context.
@@ -2488,6 +2494,7 @@ static boolean_t
 dbuf_undirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 {
 	uint64_t txg = tx->tx_txg;
+	boolean_t brtwrite;
 
 	ASSERT(txg != 0);
 
@@ -2511,6 +2518,12 @@ dbuf_undirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 	if (dr == NULL)
 		return (B_FALSE);
 	ASSERT(dr->dr_dbuf == db);
+
+	brtwrite = dr->dt.dl.dr_brtwrite;
+	if (brtwrite) {
+		brt_pending_remove(dmu_objset_spa(db->db_objset),
+		    &dr->dt.dl.dr_overridden_by, tx);
+	}
 
 	dnode_t *dn = dr->dr_dnode;
 
@@ -2541,7 +2554,7 @@ dbuf_undirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 		mutex_exit(&dn->dn_mtx);
 	}
 
-	if (db->db_state != DB_NOFILL) {
+	if (db->db_state != DB_NOFILL && !brtwrite) {
 		dbuf_unoverride(dr);
 
 		ASSERT(db->db_buf != NULL);
@@ -2556,7 +2569,8 @@ dbuf_undirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 	db->db_dirtycnt -= 1;
 
 	if (zfs_refcount_remove(&db->db_holds, (void *)(uintptr_t)txg) == 0) {
-		ASSERT(db->db_state == DB_NOFILL || arc_released(db->db_buf));
+		ASSERT(db->db_state == DB_NOFILL || brtwrite ||
+		    arc_released(db->db_buf));
 		dbuf_destroy(db);
 		return (B_TRUE);
 	}

@@ -137,7 +137,7 @@ typedef struct brt {
 	uint64_t	brt_blocksize;
 	uint64_t	brt_drefsize;
 	uint64_t	brt_dsize;
-	list_t		brt_pending_list[TXG_SIZE];
+	avl_tree_t	brt_pending_tree[TXG_SIZE];
 	kmutex_t	brt_pending_lock[TXG_SIZE];
 	uint64_t	brt_nentries;
 	brt_vdev_t	*brt_vdevs;
@@ -159,9 +159,9 @@ typedef struct brt_entry {
 } brt_entry_t;
 
 typedef struct brt_pending_entry {
-	uint64_t	bpe_txg;
 	blkptr_t	bpe_bp;
-	list_node_t	bpe_node;
+	int		bpe_count;
+	avl_node_t	bpe_node;
 } brt_pending_entry_t;
 
 static kmem_cache_t *brt_entry_cache;
@@ -221,6 +221,7 @@ static brt_stats_t brt_stats = {
 #define	BRTSTAT_BUMP(stat)	atomic_inc_64(&brt_stats.stat.value.ui64)
 
 static int brt_entry_compare(const void *x1, const void *x2);
+static int brt_pending_entry_compare(const void *x1, const void *x2);
 
 static void
 brt_enter(brt_t *brt)
@@ -1116,27 +1117,113 @@ brt_prefetch(brt_t *brt, const blkptr_t *bp)
 	brt_entry_prefetch(brt, &bre);
 }
 
+static int
+brt_pending_entry_compare(const void *x1, const void *x2)
+{
+	const brt_pending_entry_t *bpe1 = x1, *bpe2 = x2;
+	const blkptr_t *bp1 = &bpe1->bpe_bp, *bp2 = &bpe2->bpe_bp;
+
+	if (BP_PHYSICAL_BIRTH(bp1) < BP_PHYSICAL_BIRTH(bp2)) {
+		return (-1);
+	} else if (BP_PHYSICAL_BIRTH(bp1) > BP_PHYSICAL_BIRTH(bp2)) {
+		return (-1);
+	}
+
+	if (DVA_GET_VDEV(&bp1->blk_dva[0]) <
+	    DVA_GET_VDEV(&bp2->blk_dva[0])) {
+		return (-1);
+	} else if (DVA_GET_VDEV(&bp1->blk_dva[0]) >
+	    DVA_GET_VDEV(&bp2->blk_dva[0])) {
+		return (1);
+	}
+
+	if (DVA_GET_OFFSET(&bp1->blk_dva[0]) <
+	    DVA_GET_OFFSET(&bp2->blk_dva[0])) {
+		return (-1);
+	} else if (DVA_GET_OFFSET(&bp1->blk_dva[0]) >
+	    DVA_GET_OFFSET(&bp2->blk_dva[0])) {
+		return (1);
+	}
+
+	return (0);
+}
+
 void
 brt_pending_add(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
 {
 	brt_t *brt;
-	brt_pending_entry_t *bpe;
+	avl_tree_t *pending_tree;
+	kmutex_t *pending_lock;
+	brt_pending_entry_t *bpe, *newbpe;
+	avl_index_t where;
 	uint64_t txg;
 
 	brt = spa->spa_brt;
 	txg = dmu_tx_get_txg(tx);
 	ASSERT3U(txg, !=, 0);
+	pending_tree = &brt->brt_pending_tree[txg & TXG_MASK];
+	pending_lock = &brt->brt_pending_lock[txg & TXG_MASK];
 
-	bpe = kmem_cache_alloc(brt_pending_entry_cache, KM_SLEEP);
-	bpe->bpe_txg = txg;
-	bpe->bpe_bp = *bp;
+	newbpe = kmem_cache_alloc(brt_pending_entry_cache, KM_SLEEP);
+	newbpe->bpe_bp = *bp;
+	newbpe->bpe_count = 1;
 
-	mutex_enter(&brt->brt_pending_lock[txg & TXG_MASK]);
-	list_insert_tail(&brt->brt_pending_list[txg & TXG_MASK], bpe);
-	mutex_exit(&brt->brt_pending_lock[txg & TXG_MASK]);
+	mutex_enter(pending_lock);
+
+	bpe = avl_find(pending_tree, newbpe, &where);
+	if (bpe == NULL) {
+		avl_insert(pending_tree, newbpe, where);
+		newbpe = NULL;
+	} else {
+		bpe->bpe_count++;
+	}
+
+	mutex_exit(pending_lock);
+
+	if (newbpe != NULL) {
+		ASSERT(bpe != NULL);
+		ASSERT(bpe != newbpe);
+		kmem_cache_free(brt_pending_entry_cache, newbpe);
+	} else {
+		ASSERT(bpe == NULL);
+	}
 
 	/* Prefetch BRT entry, as we will need it in the syncing context. */
 	brt_prefetch(brt, bp);
+}
+
+void
+brt_pending_remove(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
+{
+	brt_t *brt;
+	avl_tree_t *pending_tree;
+	kmutex_t *pending_lock;
+	brt_pending_entry_t *bpe, bpe_search;
+	uint64_t txg;
+
+	brt = spa->spa_brt;
+	txg = dmu_tx_get_txg(tx);
+	ASSERT3U(txg, !=, 0);
+	pending_tree = &brt->brt_pending_tree[txg & TXG_MASK];
+	pending_lock = &brt->brt_pending_lock[txg & TXG_MASK];
+
+	bpe_search.bpe_bp = *bp;
+
+	mutex_enter(pending_lock);
+
+	bpe = avl_find(pending_tree, &bpe_search, NULL);
+	/* I believe we should also find bpe when this function is called. */
+	if (bpe != NULL) {
+		ASSERT(bpe->bpe_count > 0);
+
+		bpe->bpe_count--;
+		if (bpe->bpe_count == 0) {
+			avl_remove(pending_tree, bpe);
+			kmem_cache_free(brt_pending_entry_cache, bpe);
+		}
+	}
+
+	mutex_exit(pending_lock);
 }
 
 /* TODO: Move to ddt.c. */
@@ -1191,39 +1278,46 @@ brt_pending_apply(spa_t *spa, uint64_t txg)
 {
 	brt_t *brt;
 	brt_pending_entry_t *bpe;
-	list_t *pending_list;
+	avl_tree_t *pending_tree;
 	kmutex_t *pending_lock;
+	void *c;
+	int i;
 
 	ASSERT3U(txg, !=, 0);
 
 	brt = spa->spa_brt;
-	pending_list = &brt->brt_pending_list[txg & TXG_MASK];
+	pending_tree = &brt->brt_pending_tree[txg & TXG_MASK];
 	pending_lock = &brt->brt_pending_lock[txg & TXG_MASK];
 
 	mutex_enter(pending_lock);
-	while ((bpe = list_head(pending_list)) != NULL) {
+
+	c = NULL;
+	while ((bpe = avl_destroy_nodes(pending_tree, &c)) != NULL) {
 		boolean_t added_to_ddt;
 
-		ASSERT3U(txg, ==, bpe->bpe_txg);
-
-		list_remove(pending_list, bpe);
 		mutex_exit(pending_lock);
 
-		/*
-		 * If the block has DEDUP bit set, it means that it already
-		 * exists in the DEDUP table, so we can just use that instead
-		 * of creating new entry in the BRT table.
-		 */
-		if (BP_GET_DEDUP(&bpe->bpe_bp))
-			added_to_ddt = brt_add_to_ddt(spa, &bpe->bpe_bp);
-		else
-			added_to_ddt = B_FALSE;
-		if (!added_to_ddt)
-			brt_entry_addref(brt, &bpe->bpe_bp);
+		for (i = 0; i < bpe->bpe_count; i++) {
+			/*
+			 * If the block has DEDUP bit set, it means that it
+			 * already exists in the DEDUP table, so we can just
+			 * use that instead of creating new entry in
+			 * the BRT table.
+			 */
+			if (BP_GET_DEDUP(&bpe->bpe_bp)) {
+				added_to_ddt = brt_add_to_ddt(spa,
+				    &bpe->bpe_bp);
+			} else {
+				added_to_ddt = B_FALSE;
+			}
+			if (!added_to_ddt)
+				brt_entry_addref(brt, &bpe->bpe_bp);
+		}
 
 		kmem_cache_free(brt_pending_entry_cache, bpe);
 		mutex_enter(pending_lock);
 	}
+
 	mutex_exit(pending_lock);
 }
 
@@ -1324,7 +1418,8 @@ brt_table_alloc(brt_t *brt)
 	int i;
 
 	for (i = 0; i < TXG_SIZE; i++) {
-		list_create(&brt->brt_pending_list[i],
+		avl_create(&brt->brt_pending_tree[i],
+		    brt_pending_entry_compare,
 		    sizeof (brt_pending_entry_t),
 		    offsetof(brt_pending_entry_t, bpe_node));
 		mutex_init(&brt->brt_pending_lock[i], NULL, MUTEX_DEFAULT,
@@ -1338,9 +1433,9 @@ brt_table_free(brt_t *brt)
 	int i;
 
 	for (i = 0; i < TXG_SIZE; i++) {
-		ASSERT(list_is_empty(&brt->brt_pending_list[i]));
+		ASSERT(avl_is_empty(&brt->brt_pending_tree[i]));
 
-		list_destroy(&brt->brt_pending_list[i]);
+		avl_destroy(&brt->brt_pending_tree[i]);
 		mutex_destroy(&brt->brt_pending_lock[i]);
 	}
 }
