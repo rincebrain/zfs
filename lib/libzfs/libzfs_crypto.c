@@ -1580,7 +1580,8 @@ error:
 }
 
 int
-zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
+zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey,
+    boolean_t forcekey)
 {
 	int ret;
 	char errbuf[1024];
@@ -1588,7 +1589,9 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 	nvlist_t *props = NULL;
 	uint8_t *wkeydata = NULL;
 	uint_t wkeylen = 0;
-	dcp_cmd_t cmd = (inheritkey) ? DCP_CMD_INHERIT : DCP_CMD_NEW_KEY;
+	dcp_cmd_t cmd = forcekey ? DCP_CMD_FORCE_NEW_KEY : ((inheritkey) ? DCP_CMD_INHERIT : DCP_CMD_NEW_KEY);
+	if (forcekey && inheritkey)
+		cmd = DCP_CMD_FORCE_INHERIT;
 	uint64_t crypt, pcrypt, keystatus, pkeystatus;
 	uint64_t keyformat = ZFS_KEYFORMAT_NONE;
 	zfs_handle_t *pzhp = NULL;
@@ -1692,7 +1695,8 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 			}
 		} else {
 			/* need a new key for non-encryption roots */
-			if (keyformat == ZFS_KEYFORMAT_NONE) {
+			if (keyformat == ZFS_KEYFORMAT_NONE &&
+			    !forcekey) {
 				ret = EINVAL;
 				zfs_error_aux(zhp->zfs_hdl,
 				    dgettext(TEXT_DOMAIN, "Keyformat required "
@@ -1701,7 +1705,7 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 			}
 
 			/* default to prompt if no keylocation is specified */
-			if (keylocation == NULL) {
+			if (keylocation == NULL && !forcekey) {
 				keylocation = "prompt";
 				ret = nvlist_add_string(props,
 				    zfs_prop_to_name(ZFS_PROP_KEYLOCATION),
@@ -1766,7 +1770,7 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 
 	/* check that the key is loaded */
 	keystatus = zfs_prop_get_int(zhp, ZFS_PROP_KEYSTATUS);
-	if (keystatus == ZFS_KEYSTATUS_UNAVAILABLE) {
+	if (keystatus == ZFS_KEYSTATUS_UNAVAILABLE && !forcekey) {
 		zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
 		    "Key must be loaded."));
 		ret = EACCES;
@@ -1774,7 +1778,10 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 	}
 
 	/* call the ioctl */
-	ret = lzc_change_key(zhp->zfs_name, cmd, props, wkeydata, wkeylen);
+	if (!forcekey)
+		ret = lzc_change_key(zhp->zfs_name, cmd, props, wkeydata, wkeylen);
+	else
+		ret = lzc_change_key(zhp->zfs_name, cmd, NULL, NULL, 0);
 	if (ret != 0) {
 		switch (ret) {
 		case EPERM:

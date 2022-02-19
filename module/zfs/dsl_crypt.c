@@ -1307,19 +1307,20 @@ spa_keystore_change_key_check(void *arg, dmu_tx_t *tx)
 	/* handle forcing an encryption root without rewrapping */
 	if (dcp->cp_cmd == DCP_CMD_FORCE_NEW_KEY) {
 		/* no other encryption params should be given */
-		if (dcp->cp_crypt != ZIO_CRYPT_INHERIT ||
+		if (dcp->cp_crypt != ZIO_CRYPT_INHERIT /*||
 		    dcp->cp_keylocation != NULL ||
-		    dcp->cp_wkey != NULL) {
+		    dcp->cp_wkey != NULL*/) {
 			ret = SET_ERROR(EINVAL);
 			goto error;
 		}
 
 		/* check that this is not an encryption root */
+/*
 		if (dd->dd_object == rddobj) {
 			ret = SET_ERROR(EINVAL);
 			goto error;
 		}
-
+*/
 		dsl_dir_rele(dd, FTAG);
 		return (0);
 	}
@@ -1521,7 +1522,7 @@ spa_keystore_change_key_sync(void *arg, dmu_tx_t *tx)
 		 * command can set keylocation even if it can't normally be
 		 * set via 'zfs set' due to a non-local keylocation.
 		 */
-		if (dcp->cp_cmd == DCP_CMD_NEW_KEY) {
+		if (dcp->cp_wkey != NULL) {
 			wkey = dcp->cp_wkey;
 			wkey->wk_ddobj = ds->ds_dir->dd_object;
 		} else {

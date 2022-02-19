@@ -100,6 +100,9 @@ typedef struct dsl_crypto_params {
 
 	/* the wrapping key */
 	dsl_wrapping_key_t *cp_wkey;
+
+	/* Are we forcibly overriding the key */
+	boolean_t forcekey;
 } dsl_crypto_params_t;
 
 /*
