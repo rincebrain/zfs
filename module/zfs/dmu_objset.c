@@ -335,6 +335,16 @@ smallblk_changed_cb(void *arg, uint64_t newval)
 }
 
 static void
+compthres_changed_cb(void *arg, uint64_t newval)
+{
+	objset_t *os = arg;
+
+	ASSERT(newval >= 0);
+	ASSERT(newval <= ZIO_COMPTHRES_MAX);
+	os->os_compthres = newval;
+}
+
+static void
 logbias_changed_cb(void *arg, uint64_t newval)
 {
 	objset_t *os = arg;
@@ -612,6 +622,12 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 				    ZFS_PROP_SPECIAL_SMALL_BLOCKS),
 				    smallblk_changed_cb, os);
 			}
+			if (err == 0) {
+				err = dsl_prop_register(ds,
+				    zfs_prop_to_name(
+				    ZFS_PROP_COMPRESSTHRES),
+				    compthres_changed_cb, os);
+			}
 		}
 		if (err != 0) {
 			arc_buf_destroy(os->os_phys_buf, &os->os_phys_buf);
@@ -632,6 +648,7 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 		os->os_primary_cache = ZFS_CACHE_ALL;
 		os->os_secondary_cache = ZFS_CACHE_ALL;
 		os->os_dnodesize = DNODE_MIN_SIZE;
+		os->os_compthres = ZIO_COMPTHRES_DEFAULT;
 	}
 
 	if (ds == NULL || !ds->ds_is_snapshot)

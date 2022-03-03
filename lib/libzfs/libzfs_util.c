@@ -1603,6 +1603,7 @@ zprop_parse_value(libzfs_handle_t *hdl, nvpair_t *elem, int prop,
 	zprop_type_t proptype;
 	const char *propname;
 	char *value;
+	float floatval = 0.0;
 	boolean_t isnone = B_FALSE;
 	boolean_t isauto = B_FALSE;
 	int err = 0;
@@ -1651,6 +1652,14 @@ zprop_parse_value(libzfs_handle_t *hdl, nvpair_t *elem, int prop,
 				isnone = B_TRUE;
 			} else if (strcmp(value, "auto") == 0) {
 				isauto = B_TRUE;
+			} else if (sscanf(value, "%f", &floatval) == 1) {
+				if (prop != ZFS_PROP_COMPRESSTHRES)
+					goto error;
+				if (floatval > 100 || floatval < 0)
+					goto error;
+				//ASSERT((floatval * 100) % 100 == 0);
+				*ivalp = (uint64_t)((floatval / 100) * ZIO_COMPTHRES_FIXEDMULT);
+				ASSERT(*ivalp <= ZIO_COMPTHRES_MAX);
 			} else if (zfs_nicestrtonum(hdl, value, ivalp) != 0) {
 				goto error;
 			}
