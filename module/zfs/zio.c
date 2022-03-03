@@ -1707,8 +1707,14 @@ zio_write_compress(zio_t *zio)
 	if (compress != ZIO_COMPRESS_OFF &&
 	    !(zio->io_flags & ZIO_FLAG_RAW_COMPRESS)) {
 		void *cbuf = zio_buf_alloc(lsize);
+		/* 
+		 * This looks wrong, but since zp->zp_compthres = ((1/8) * ZIO_COMPTHRES_FIXEDMULT) (by default), you don't want to divide by it here, the division is already baked in.
+		 */
+		int minsavings = MAX(1 << spa->spa_max_ashift,
+			P2ROUNDUP( (((lsize * ZIO_COMPTHRES_FIXEDMULT) * zp->zp_compthres) / (ZIO_COMPTHRES_FIXEDMULT * ZIO_COMPTHRES_FIXEDMULT)), (1 << spa->spa_max_ashift)) );
+//		zfs_dbgmsg("DBG compress2: lsize (%llu) ZIO_COMPTHRES_FIXEDMULT (%llu) zp_compthres (%llu) minsavings (%llu)",lsize, ZIO_COMPTHRES_FIXEDMULT, zp->zp_compthres, minsavings);
 		psize = zio_compress_data(compress, zio->io_abd, cbuf, lsize,
-		    zp->zp_complevel, 1 << spa->spa_max_ashift);
+		    zp->zp_complevel, minsavings);
 		if (psize == 0 || psize >= lsize) {
 			compress = ZIO_COMPRESS_OFF;
 			zio_buf_free(cbuf, lsize);

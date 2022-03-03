@@ -1273,6 +1273,19 @@ zfs_valid_proplist(libzfs_handle_t *hdl, zfs_type_t type, nvlist_t *nvl,
 			}
 			break;
 		}
+		
+		case ZFS_PROP_COMPRESSTHRES:
+		{
+			if (intval != 0 &&
+			    (intval > ZIO_COMPTHRES_MAX)) {
+			    	zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    	    "invalid %s=%s property: must be in (0.00 <= X <= 100.00)%%"),
+			    	    propname,strval);
+			    	(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+			    	goto error;
+			    }
+			break;
+		}
 
 		case ZFS_PROP_MLSLABEL:
 		{
@@ -2247,6 +2260,7 @@ get_numeric_property(zfs_handle_t *zhp, zfs_prop_t prop, zprop_source_t *src,
 	case ZFS_PROP_SNAPSHOT_LIMIT:
 	case ZFS_PROP_FILESYSTEM_COUNT:
 	case ZFS_PROP_SNAPSHOT_COUNT:
+	case ZFS_PROP_COMPRESSTHRES:
 		*val = getprop_uint64(zhp, prop, source);
 
 		if (*source == NULL) {
@@ -2933,6 +2947,18 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 		zcp_check(zhp, prop, val, NULL);
 		break;
 
+	case ZFS_PROP_COMPRESSTHRES:
+		/* Almost, but not quite, entirely unlike handling compressratio. */
+		if (get_numeric_property(zhp, prop, src, &source, &val) != 0)
+			return (-1);
+		if (literal)
+			(void) snprintf(propbuf, proplen, "%lf %llu",
+			    ((float)val / (float)ZIO_COMPTHRES_FIXEDMULT)*100,(u_longlong_t)val);
+		else
+			(void) snprintf(propbuf, proplen, "%3.2lf%%",
+			    ((float)val / (float)ZIO_COMPTHRES_FIXEDMULT)*100);
+		zcp_check(zhp, prop, val, NULL);
+		break;
 	default:
 		switch (zfs_prop_get_type(prop)) {
 		case PROP_TYPE_NUMBER:

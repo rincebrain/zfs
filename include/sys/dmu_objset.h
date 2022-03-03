@@ -120,6 +120,7 @@ struct objset {
 	enum zio_compress os_compress;
 	uint8_t os_complevel;
 	uint8_t os_copies;
+	uint32_t os_compthres;
 	enum zio_checksum os_dedup_checksum;
 	boolean_t os_dedup_verify;
 	zfs_logbias_op_t os_logbias;

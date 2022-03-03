@@ -150,9 +150,10 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 	 * - less than BPE_PAYLOAD_SIZE (embedded_data feature)
 	 * - at least one saved sector
 	 */
-	if (compress_threshold > 0) {
+ 	if (compress_threshold > 0) {
 		d_len = MAX(BPE_PAYLOAD_SIZE,
-		    s_len - (s_len % compress_threshold));
+		    s_len - compress_threshold);
+//		zfs_dbgmsg("DBG compress: slen(%llu) dlen(%llu) BPE_PAYLOAD_SIZE(%llu) compress_threshold(%llu)", s_len, d_len, BPE_PAYLOAD_SIZE, compress_threshold);
 	} else {
 		/* Special case for reproducibility of ARC checks */
 		d_len = s_len;
@@ -176,6 +177,7 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 	/* No compression algorithms can read from ABDs directly */
 	void *tmp = abd_borrow_buf_copy(src, s_len);
 	c_len = ci->ci_compress(tmp, dst, s_len, d_len, complevel);
+//	zfs_dbgmsg("DBG compress: slen(%llu) dlen(%llu) c_len(%llu) BPE_PAYLOAD_SIZE(%llu) compress_threshold(%llu)", s_len, d_len, c_len, BPE_PAYLOAD_SIZE, compress_threshold);
 	abd_return_buf(src, tmp, s_len);
 
 	if (c_len > d_len)
