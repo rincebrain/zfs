@@ -126,7 +126,7 @@ zio_compress_zeroed_cb(void *data, size_t len, void *private)
  */
 size_t
 zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
-    uint8_t level, int compress_threshold)
+    uint8_t level, unsigned int compress_threshold)
 {
 	size_t c_len, d_len;
 	uint8_t complevel;
@@ -146,16 +146,21 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 		return (s_len);
 
 	/*
-	 * Usable compression thresholds are:
-	 * - less than BPE_PAYLOAD_SIZE (embedded_data feature)
-	 * - at least one saved sector
+	 * This function only enforces that the result be smaller by
+	 * the threshold passed in (if possible; if s_len is smaller,
+	 * it just assumes you know what you're doing and enforces
+	 * it's not larger), down to the threshold for embedded_data (since
+	 * that's never going to be larger than one block); it's on callers
+	 * to implement e.g. saving at least one block on-disk if they want to.
 	 */
- 	if (compress_threshold > 0) {
+	if (compress_threshold > 0 && compress_threshold < s_len) {
 		d_len = MAX(BPE_PAYLOAD_SIZE,
 		    s_len - compress_threshold);
-//		zfs_dbgmsg("DBG compress: slen(%llu) dlen(%llu) BPE_PAYLOAD_SIZE(%llu) compress_threshold(%llu)", s_len, d_len, BPE_PAYLOAD_SIZE, compress_threshold);
 	} else {
-		/* Special case for reproducibility of ARC checks */
+		/*
+		 * Just don't be larger. Important for e.g. ARC
+		 * recompression.
+		 */
 		d_len = s_len;
 	}
 
@@ -177,7 +182,6 @@ zio_compress_data(enum zio_compress c, abd_t *src, void *dst, size_t s_len,
 	/* No compression algorithms can read from ABDs directly */
 	void *tmp = abd_borrow_buf_copy(src, s_len);
 	c_len = ci->ci_compress(tmp, dst, s_len, d_len, complevel);
-//	zfs_dbgmsg("DBG compress: slen(%llu) dlen(%llu) c_len(%llu) BPE_PAYLOAD_SIZE(%llu) compress_threshold(%llu)", s_len, d_len, c_len, BPE_PAYLOAD_SIZE, compress_threshold);
 	abd_return_buf(src, tmp, s_len);
 
 	if (c_len > d_len)

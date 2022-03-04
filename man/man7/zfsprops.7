@@ -37,7 +37,7 @@
 .\" Copyright 2019 Joyent, Inc.
 .\" Copyright (c) 2019, Kjeld Schouten-Lebbing
 .\"
-.Dd May 24, 2021
+.Dd March 4, 2022
 .Dt ZFSPROPS 7
 .Os
 .
@@ -910,6 +910,38 @@ with
 .Sy 4K
 sectors, which have 4 sectors per block,
 compression needs to save at least 25% to actually save space on disk).
+.It Xo
+.Sy compressthreshold Ns = Ns Sy 12.5% Ns | Ns Sy <percentage> Ns
+.Xc
+Controls the threshold required for compression to store the compressed
+record, specified as a percentage of the uncompressed record.
+.Pp
+Can be specified with or without trailing percent sign.
+.Pp
+Note: Is represented with only 3.3 precision, so attempting to set
+.Sy compressthreshold Ns = Ns Sy 3.1234%
+will result in
+.Sy compressthreshold Ns = Ns Sy 3.123%
+.
+.Pp
+Note that changing this property, as with changing
+.Sy checksum
+or
+.Sy compression
+, can cause some newly written data to not dedup against older data, since data
+that was formerly stored compressed may now be stored uncompressed, or vice-versa.
+.Pp
+Note also that this property did not exist on pre-3.0 OpenZFS versions, so if the
+pool is imported on those platforms, they will use the old fixed threshold
+of 12.5% regardless of what this is set to for any newly written data.
+.Pp
+In addition, if you
+.Sy zfs send -p
+(or -R or anything else which includes -p) a dataset with
+.Sy compressthreshold
+explicitly set to a receiver pre-OpenZFS 3.0, it will print a complaint
+about the property for each snapshot it receives with the property set, but will
+receive fine other than discarding the property.
 .It Xo
 .Sy context Ns = Ns Sy none Ns | Ns
 .Ar SELinux-User : Ns Ar SELinux-Role : Ns Ar SELinux-Type : Ns Ar Sensitivity-Level

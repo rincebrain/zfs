@@ -669,9 +669,9 @@ zfs_prop_init(void)
 	zprop_register_number(ZFS_PROP_SNAPSHOT_LIMIT, "snapshot_limit",
 	    UINT64_MAX, PROP_DEFAULT, ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
 	    "<count> | none", "SSLIMIT", B_FALSE, sfeatures);
-	    "<count> | none", "SSLIMIT", B_FALSE, sfeatures);
-	zprop_register_number(ZFS_PROP_COMPRESSTHRES, "compressthreshold", ZIO_COMPTHRES_DEFAULT,
-	    PROP_INHERIT, ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
+	zprop_register_number(ZFS_PROP_COMPRESSTHRES, "compressthreshold",
+	    ZIO_COMPTHRES_DEFAULT, PROP_INHERIT,
+	    ZFS_TYPE_FILESYSTEM | ZFS_TYPE_VOLUME,
 	    "<xx.yy%%> | none", "COMPTHRES", B_FALSE, sfeatures);
 
 	/* inherit number properties */

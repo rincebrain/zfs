@@ -339,7 +339,6 @@ compthres_changed_cb(void *arg, uint64_t newval)
 {
 	objset_t *os = arg;
 
-	ASSERT(newval >= 0);
 	ASSERT(newval <= ZIO_COMPTHRES_MAX);
 	os->os_compthres = newval;
 }
