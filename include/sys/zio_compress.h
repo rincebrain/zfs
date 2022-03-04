@@ -66,8 +66,14 @@ enum zio_compress {
 #define	ZIO_COMPLEVEL_INHERIT	0
 #define	ZIO_COMPLEVEL_DEFAULT	255
 #define	ZIO_COMPTHRES_FIXEDMULT ((u_longlong_t)100000)
-#define	ZIO_COMPTHRES_DEFAULT	(.125 * ZIO_COMPTHRES_FIXEDMULT)
-#define	ZIO_COMPTHRES_MAX	(1.0 * ZIO_COMPTHRES_FIXEDMULT)
+/*
+ * If we actually define it this way, then runtime has to do floating-point math.
+ * So instead, we precompute it and sigh about compilers.
+ */
+//#define       ZIO_COMPTHRES_DEFAULT   (.125 * ZIO_COMPTHRES_FIXEDMULT)
+#define ZIO_COMPTHRES_DEFAULT   (12500)
+//#define       ZIO_COMPTHRES_MAX       (1.0 * ZIO_COMPTHRES_FIXEDMULT)
+#define ZIO_COMPTHRES_MAX       ZIO_COMPTHRES_FIXEDMULT
 
 enum zio_zstd_levels {
 	ZIO_ZSTD_LEVEL_INHERIT = 0,
