@@ -1657,8 +1657,18 @@ zprop_parse_value(libzfs_handle_t *hdl, nvpair_t *elem, int prop,
 					goto error;
 				if (floatval > 100 || floatval < 0)
 					goto error;
-				//ASSERT((floatval * 100) % 100 == 0);
-				*ivalp = (uint64_t)((floatval / 100) * ZIO_COMPTHRES_FIXEDMULT);
+				/*
+				 * compressthreshold is stored as the float
+				 * scaled by ZIO_COMPTHRES_FIXEDMULT so we can
+				 * pass it around without adding floats to
+				 * nvlists, as well as allowing easy math
+				 * in the kernel.
+				 *
+				 * So we turn e.g. 12.5% into .125, then
+				 * scale it.
+				 */
+				*ivalp = (uint64_t)((floatval / 100)
+				    * ZIO_COMPTHRES_FIXEDMULT);
 				ASSERT(*ivalp <= ZIO_COMPTHRES_MAX);
 			} else if (zfs_nicestrtonum(hdl, value, ivalp) != 0) {
 				goto error;

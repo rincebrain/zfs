@@ -1707,12 +1707,24 @@ zio_write_compress(zio_t *zio)
 	if (compress != ZIO_COMPRESS_OFF &&
 	    !(zio->io_flags & ZIO_FLAG_RAW_COMPRESS)) {
 		void *cbuf = zio_buf_alloc(lsize);
-		/* 
-		 * This looks wrong, but since zp->zp_compthres = ((1/8) * ZIO_COMPTHRES_FIXEDMULT) (by default), you don't want to divide by it here, the division is already baked in.
+		/*
+		 * We want MAX((max ashift block size in the pool),
+		 * (minimum compression savings specified, rounded up to
+		 * max ashift bs in pool).
+		 *
+		 * So we multiply by the pre-scaled savings percent value,
+		 * then remove the scaling factor.
+		 *
+		 * This looks wrong, but since
+		 * zp->zp_compthres = ((1/8) * ZIO_COMPTHRES_FIXEDMULT)
+		 * (by default), you don't want to divide by it here,
+		 * the division is already baked in.
 		 */
+		int raw_desired_savings =
+		    (lsize * zp->zp_compthres) / ZIO_COMPTHRES_FIXEDMULT;
 		int minsavings = MAX(1 << spa->spa_max_ashift,
-			P2ROUNDUP( (((lsize * ZIO_COMPTHRES_FIXEDMULT) * zp->zp_compthres) / (ZIO_COMPTHRES_FIXEDMULT * ZIO_COMPTHRES_FIXEDMULT)), (1 << spa->spa_max_ashift)) );
-//		zfs_dbgmsg("DBG compress2: lsize (%llu) ZIO_COMPTHRES_FIXEDMULT (%llu) zp_compthres (%llu) minsavings (%llu)",lsize, ZIO_COMPTHRES_FIXEDMULT, zp->zp_compthres, minsavings);
+		    P2ROUNDUP(raw_desired_savings,
+		    (1 << spa->spa_max_ashift)));
 		psize = zio_compress_data(compress, zio->io_abd, cbuf, lsize,
 		    zp->zp_complevel, minsavings);
 		if (psize == 0 || psize >= lsize) {

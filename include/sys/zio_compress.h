@@ -65,7 +65,7 @@ enum zio_compress {
 
 #define	ZIO_COMPLEVEL_INHERIT	0
 #define	ZIO_COMPLEVEL_DEFAULT	255
-#define	ZIO_COMPTHRES_FIXEDMULT ((u_longlong_t)65536)
+#define	ZIO_COMPTHRES_FIXEDMULT ((u_longlong_t)100000)
 #define	ZIO_COMPTHRES_DEFAULT	(.125 * ZIO_COMPTHRES_FIXEDMULT)
 #define	ZIO_COMPTHRES_MAX	(1.0 * ZIO_COMPTHRES_FIXEDMULT)
 
@@ -188,7 +188,7 @@ extern int lz4_decompress_zfs(void *src, void *dst, size_t s_len, size_t d_len,
  * Compress and decompress data if necessary.
  */
 extern size_t zio_compress_data(enum zio_compress c, abd_t *src, void *dst,
-    size_t s_len, uint8_t level, int compress_threshold);
+    size_t s_len, uint8_t level, unsigned int compress_threshold);
 extern int zio_decompress_data(enum zio_compress c, abd_t *src, void *dst,
     size_t s_len, size_t d_len, uint8_t *level);
 extern int zio_decompress_data_buf(enum zio_compress c, void *src, void *dst,
