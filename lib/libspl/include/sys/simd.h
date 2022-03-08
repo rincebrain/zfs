@@ -294,9 +294,15 @@ zfs_avx_available(void)
 /*
  * Check if AVX2 instruction set is available
  */
+	#ifndef _KERNEL
+	#include <stdio.h>
+	#endif
 static inline boolean_t
 zfs_avx2_available(void)
 {
+	#ifndef _KERNEL
+//	fprintf(stderr, "DBG: %d %d\n", __cpuid_has_avx2(), __ymm_enabled());
+	#endif
 	return (__cpuid_has_avx2() && __ymm_enabled());
 }
 

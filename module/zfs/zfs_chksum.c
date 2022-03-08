@@ -44,6 +44,8 @@ typedef struct {
 	uint64_t bs1m;
 	uint64_t bs4m;
 	zio_cksum_salt_t salt;
+	zio_cksum_t chkme[7];
+	boolean_t wrong[7];
 	zio_checksum_t *(func);
 	zio_checksum_tmpl_init_t *(init);
 	zio_checksum_tmpl_free_t *(free);
@@ -79,13 +81,13 @@ chksum_stat_kstat_headers(char *buf, size_t size)
 	ssize_t off = 0;
 
 	off += snprintf(buf + off, size, "%-23s", "implementation");
-	off += snprintf(buf + off, size - off, "%8s", "1k");
-	off += snprintf(buf + off, size - off, "%8s", "4k");
-	off += snprintf(buf + off, size - off, "%8s", "16k");
-	off += snprintf(buf + off, size - off, "%8s", "64k");
-	off += snprintf(buf + off, size - off, "%8s", "256k");
-	off += snprintf(buf + off, size - off, "%8s", "1m");
-	(void) snprintf(buf + off, size - off, "%8s\n", "4m");
+	off += snprintf(buf + off, size - off, "%9s", "1k");
+	off += snprintf(buf + off, size - off, "%9s", "4k");
+	off += snprintf(buf + off, size - off, "%9s", "16k");
+	off += snprintf(buf + off, size - off, "%9s", "64k");
+	off += snprintf(buf + off, size - off, "%9s", "256k");
+	off += snprintf(buf + off, size - off, "%9s", "1m");
+	(void) snprintf(buf + off, size - off, "%9s\n", "4m");
 
 	return (0);
 }
@@ -93,28 +95,39 @@ chksum_stat_kstat_headers(char *buf, size_t size)
 static int
 chksum_stat_kstat_data(char *buf, size_t size, void *data)
 {
+	static char* oldname = NULL;
+	static char* oldimpl = NULL;
 	chksum_stat_t *cs;
 	ssize_t off = 0;
 	char b[24];
 
 	cs = (chksum_stat_t *)data;
+	/*
+	 * Useful for catching if you've added a checksum and not incremented everything properly
+	 */
+	if (cs->name == NULL || cs->impl == NULL || (cs->name == oldname && cs->impl == oldimpl)) {
+		return (0);
+	}
+
 	snprintf(b, 23, "%s-%s", cs->name, cs->impl);
 	off += snprintf(buf + off, size - off, "%-23s", b);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs1k);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs4k);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs16k);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs64k);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs256k);
-	off += snprintf(buf + off, size - off, "%8llu",
-	    (u_longlong_t)cs->bs1m);
-	(void) snprintf(buf + off, size - off, "%8llu\n",
-	    (u_longlong_t)cs->bs4m);
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs1k, (cs->wrong[0] ? "*" : ""));
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs4k, (cs->wrong[1] ? "*" : ""));
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs16k, (cs->wrong[2] ? "*" : ""));
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs64k, (cs->wrong[3] ? "*" : ""));
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs256k, (cs->wrong[4] ? "*" : ""));
+	off += snprintf(buf + off, size - off, "%8llu%1s",
+	    (u_longlong_t)cs->bs1m, (cs->wrong[5] ? "*" : ""));
+	(void) snprintf(buf + off, size - off, "%8llu%1s\n",
+	    (u_longlong_t)cs->bs4m, (cs->wrong[6] ? "*" : "") );
 
+	oldname = (char*)cs->name;
+	oldimpl = (char*)cs->impl;
 	return (0);
 }
 
@@ -131,7 +144,7 @@ chksum_stat_kstat_addr(kstat_t *ksp, loff_t n)
 
 static void
 chksum_run(chksum_stat_t *cs, abd_t *abd, void *ctx, int round,
-    uint64_t *result)
+    uint64_t *result, zio_cksum_t *chkme)
 {
 	hrtime_t start;
 	uint64_t run_bw, run_time_ns, run_count = 0, size = 0;
@@ -165,6 +178,9 @@ chksum_run(chksum_stat_t *cs, abd_t *abd, void *ctx, int round,
 	} while (run_time_ns < MSEC2NSEC(1));
 	kpreempt_enable();
 
+	if (chkme != NULL)
+		memcpy(chkme,&zcp,sizeof(zio_cksum_t));
+
 	run_bw = size * run_count * NANOSEC;
 	run_bw /= run_time_ns;	/* B/s */
 	*result = run_bw/1024/1024; /* MiB/s */
@@ -184,13 +200,13 @@ chksum_benchit(chksum_stat_t *cs)
 		ctx = cs->init(&cs->salt);
 	}
 
-	chksum_run(cs, abd, ctx, 1, &cs->bs1k);
-	chksum_run(cs, abd, ctx, 2, &cs->bs4k);
-	chksum_run(cs, abd, ctx, 3, &cs->bs16k);
-	chksum_run(cs, abd, ctx, 4, &cs->bs64k);
-	chksum_run(cs, abd, ctx, 5, &cs->bs256k);
-	chksum_run(cs, abd, ctx, 6, &cs->bs1m);
-	chksum_run(cs, abd, ctx, 7, &cs->bs4m);
+	chksum_run(cs, abd, ctx, 1, &cs->bs1k, &cs->chkme[0]);
+	chksum_run(cs, abd, ctx, 2, &cs->bs4k, &cs->chkme[1]);
+	chksum_run(cs, abd, ctx, 3, &cs->bs16k, &cs->chkme[2]);
+	chksum_run(cs, abd, ctx, 4, &cs->bs64k, &cs->chkme[3]);
+	chksum_run(cs, abd, ctx, 5, &cs->bs256k, &cs->chkme[4]);
+	chksum_run(cs, abd, ctx, 6, &cs->bs1m, &cs->chkme[5]);
+	chksum_run(cs, abd, ctx, 7, &cs->bs4m, &cs->chkme[6]);
 
 	/* free up temp memory */
 	if (cs->free) {
@@ -199,12 +215,77 @@ chksum_benchit(chksum_stat_t *cs)
 	abd_free(abd);
 }
 
+#if defined(_KERNEL) || !defined(ZFS_DEBUG)
+#define printline(s)
+#define printhead()
+#else
+void printhead(void);
+void printline(chksum_stat_t *cs);
+void printhead(void) {
+	printf("%-23s", "implementation");
+	printf("%9s", "1k");
+	printf("%9s", "4k");
+	printf("%9s", "16k");
+	printf("%9s", "64k");
+	printf("%9s", "256k");
+	printf("%9s", "1m");
+	printf("%9s", "4m\n");
+}
+
+void printline(chksum_stat_t *cs)
+{
+	char b[24];
+
+	if (cs->name == NULL)
+		return;
+	snprintf(b, 23, "%s-%s", cs->name, cs->impl);
+	printf("%-23s", b);
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs1k, (cs->wrong[0] ? "*" : ""));
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs4k, (cs->wrong[1] ? "*" : ""));
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs16k, (cs->wrong[2] ? "*" : ""));
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs64k, (cs->wrong[3] ? "*" : ""));
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs256k, (cs->wrong[4] ? "*" : ""));
+	printf("%8llu%1s",
+	    (u_longlong_t)cs->bs1m, (cs->wrong[5] ? "*" : ""));
+	(void) printf("%8llu%1s\n",
+	    (u_longlong_t)cs->bs4m,(cs->wrong[6] ? "*" : ""));
+
+}
+#endif
+
+static void validsums(zio_cksum_t *base, chksum_stat_t *cs) {
+	for (int i = 0; i < 7; i++) {
+		if (!ZIO_CHECKSUM_EQUAL(base[i],cs->chkme[i])) {
+			cs->wrong[i] = B_TRUE;
+	#if !defined(_KERNEL) && defined(ZFS_DEBUG)
+		printf("%s (%d) %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx\n",
+			cs->name, i,
+			(u_longlong_t) base[i].zc_word[0],
+			(u_longlong_t) base[i].zc_word[1],
+			(u_longlong_t) base[i].zc_word[2],
+			(u_longlong_t) base[i].zc_word[3],
+			(u_longlong_t) cs->chkme[i].zc_word[0],
+			(u_longlong_t) cs->chkme[i].zc_word[1],
+			(u_longlong_t) cs->chkme[i].zc_word[2],
+			(u_longlong_t) cs->chkme[i].zc_word[3]);
+	#endif
+		}
+	}
+}
+
 /*
  * Initialize and benchmark all supported implementations.
  */
 static void
 chksum_benchmark(void)
 {
+	zio_cksum_t baseline[7] = {0};
+
 	chksum_stat_t *cs;
 	int cbid = 0, id;
 	uint64_t max = 0;
@@ -224,6 +305,7 @@ chksum_benchmark(void)
 	cs->name = "fletcher";
 	cs->impl = "4";
 	chksum_benchit(cs);
+	printline(cs);
 
 	/* edonr */
 	cs = &chksum_stat_data[cbid++];
@@ -233,6 +315,7 @@ chksum_benchmark(void)
 	cs->name = "edonr";
 	cs->impl = "generic";
 	chksum_benchit(cs);
+	printline(cs);
 
 	/* skein */
 	cs = &chksum_stat_data[cbid++];
@@ -242,6 +325,7 @@ chksum_benchmark(void)
 	cs->name = "skein";
 	cs->impl = "generic";
 	chksum_benchit(cs);
+	printline(cs);
 
 	/* sha256 */
 	cs = &chksum_stat_data[cbid++];
@@ -251,6 +335,7 @@ chksum_benchmark(void)
 	cs->name = "sha256";
 	cs->impl = "generic";
 	chksum_benchit(cs);
+	printline(cs);
 
 	/* sha512 */
 	cs = &chksum_stat_data[cbid++];
@@ -260,6 +345,7 @@ chksum_benchmark(void)
 	cs->name = "sha512";
 	cs->impl = "generic";
 	chksum_benchit(cs);
+	printline(cs);
 
 	/* blake3 */
 	for (id = 0; id < blake3_get_impl_count(); id++) {
@@ -271,6 +357,11 @@ chksum_benchmark(void)
 		cs->name = "blake3";
 		cs->impl = blake3_get_impl_name();
 		chksum_benchit(cs);
+		if (id == 0)
+			memcpy(&baseline,&cs->chkme,sizeof(cs->chkme));
+		else
+			validsums((zio_cksum_t *)&baseline,cs);
+		printline(cs);
 		if (cs->bs256k > max) {
 			max = cs->bs256k;
 			blake3_set_impl_fastest(id);
