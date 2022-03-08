@@ -57,15 +57,17 @@
 #include <sys/types.h>
 #include <linux/version.h>
 
-#define	kfpu_allowed()		1
-#define	kfpu_begin()					\
-	{						\
-		preempt_disable();			\
-		enable_kernel_altivec();		\
+#define	kfpu_allowed()			1
+#define	kfpu_begin()				\
+	{				\
+		preempt_disable();		\
+		enable_kernel_altivec();	\
+		enable_kernel_vsx();		\
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
 #define	kfpu_end()				\
 	{					\
+		disable_kernel_vsx();		\
 		disable_kernel_altivec();	\
 		preempt_enable();		\
 	}
@@ -75,6 +77,22 @@
 #endif
 #define	kfpu_init()		0
 #define	kfpu_fini()		((void) 0)
+
+static inline boolean_t
+zfs_vsx_available(void)
+{
+	boolean_t res;
+#if defined(__powerpc64__)
+	u64 msr;
+#else
+	u32 msr;
+#endif
+	kfpu_begin();
+	__asm volatile("mfmsr %0" : "=r"(msr));
+	res = (msr & 0x800000) != 0;
+	kfpu_end();
+	return (res);
+}
 
 /*
  * Check if AltiVec instruction set is available
