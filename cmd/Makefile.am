@@ -2,7 +2,7 @@ include $(top_srcdir)/config/Shellcheck.am
 
 SUBDIRS  = zfs zpool zdb zhack zinject zstream ztest
 SUBDIRS += fsck_zfs vdev_id raidz_test zfs_ids_to_path
-SUBDIRS += zpool_influxdb
+SUBDIRS += zpool_influxdb dobench
 
 CPPCHECKDIRS  = zfs zpool zdb zhack zinject zstream ztest
 CPPCHECKDIRS += raidz_test zfs_ids_to_path zpool_influxdb

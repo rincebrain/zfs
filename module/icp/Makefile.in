@@ -13,6 +13,18 @@ obj-$(CONFIG_ZFS) := $(MODULE).o
 asflags-y := -I$(icp_include)
 ccflags-y := -I$(icp_include)
 
+EXCLUDEME := -mno-sse -mno-avx -mno-avx2 -mno-avx512f -mno-avx512vl -mno-sse3 -mno-ssse3 -mgeneral-regs-only -mtune=generic -mno-mmx -mno-sse2 -mno-3dnow -mno-80387 $(EXCLUDEALL)
+INCLUDEME := -march=native -mtune=native -O3
+
+CFLAGS_REMOVE_algs/blake3/blake3_sse2.o += $(EXCLUDEME)
+CFLAGS_algs/blake3/blake3_sse2.o += $(INCLUDEME)
+CFLAGS_REMOVE_algs/blake3/blake3_sse41.o += $(EXCLUDEME)
+CFLAGS_algs/blake3/blake3_sse41.o += $(INCLUDEME)
+CFLAGS_REMOVE_algs/blake3/blake3_avx2.o += $(EXCLUDEME)
+CFLAGS_algs/blake3/blake3_avx2.o += $(INCLUDEME)
+CFLAGS_REMOVE_algs/blake3/blake3_avx512.o += $(EXCLUDEME)
+CFLAGS_algs/blake3/blake3_avx512.o += $(INCLUDEME) -mavx512f -mavx512vl
+
 $(MODULE)-objs += illumos-crypto.o
 $(MODULE)-objs += api/kcf_cipher.o
 $(MODULE)-objs += api/kcf_mac.o
@@ -40,6 +52,10 @@ $(MODULE)-objs += algs/blake3/blake3.o
 $(MODULE)-objs += algs/blake3/blake3_generic.o
 $(MODULE)-objs += algs/blake3/blake3_impl.o
 $(MODULE)-objs += algs/blake3/blake3_x86-64.o
+$(MODULE)-objs += algs/blake3/blake3_sse2.o
+$(MODULE)-objs += algs/blake3/blake3_sse41.o
+$(MODULE)-objs += algs/blake3/blake3_avx2.o
+$(MODULE)-objs += algs/blake3/blake3_avx512.o
 $(MODULE)-objs += algs/edonr/edonr.o
 $(MODULE)-objs += algs/sha2/sha2.o
 $(MODULE)-objs += algs/skein/skein.o
@@ -62,10 +78,10 @@ $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/modes/aesni-gcm-x86_64.o
 $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/modes/ghash-x86_64.o
 $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/sha2/sha256_impl.o
 $(MODULE)-$(CONFIG_X86_64) += asm-x86_64/sha2/sha512_impl.o
-$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_avx2.o
-$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_avx512.o
-$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_sse2.o
-$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_sse41.o
+#$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_avx2.o
+#$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_avx512.o
+#$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_sse2.o
+#$(MODULE)-$(CONFIG_X86_64) += asm-x86_64/blake3/blake3_sse41.o
 
 $(MODULE)-$(CONFIG_X86) += algs/modes/gcm_pclmulqdq.o
 $(MODULE)-$(CONFIG_X86) += algs/aes/aes_impl_aesni.o

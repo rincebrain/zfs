@@ -27,11 +27,24 @@
 #include <sys/zio_checksum.h>
 #include <sys/blake3.h>
 #include <sys/abd.h>
+#ifndef _KERNEL
+#include <stdio.h>
+#endif
+
+//#define IS_ALIGNED(POINTER, BYTE_COUNT)
+//    (((uintptr_t)(const void *)(POINTER)) % (BYTE_COUNT) == 0)
 
 static int
 blake3_incremental(void *buf, size_t size, void *arg)
 {
 	BLAKE3_CTX *ctx = arg;
+
+#ifndef _KERNEL
+//	fprintf(stderr, "DBG B3 inc: %p %lu\n", arg, size);
+#endif
+
+	if (!(IS_P2ALIGNED(buf,ctx->ops->degree)))
+		zfs_dbgmsg("Misaligned: %p, for ctx %p", buf, ctx);
 
 	Blake3_Update(ctx, buf, size);
 
@@ -54,6 +67,9 @@ abd_checksum_blake3_native(abd_t *abd, uint64_t size, const void *ctx_template,
 	ASSERT(ctx_template != 0);
 
 	bcopy(ctx_template, ctx, sizeof (*ctx));
+#ifndef _KERNEL
+//	fprintf(stderr, "DBG B3 native: %p %lu %p\n", ctx, size, abd);
+#endif
 	(void) abd_iterate_func(abd, 0, size, blake3_incremental, ctx);
 	Blake3_Final(ctx, (uint8_t *)zcp);
 

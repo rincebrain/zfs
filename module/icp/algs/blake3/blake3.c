@@ -69,12 +69,12 @@ static uint8_t chunk_state_maybe_start_flag(const blake3_chunk_state_t *ctx);
 static output_t make_output(const uint32_t input_cv[8],
     const uint8_t *block, uint8_t block_len, uint64_t counter,
     uint8_t flags);
-static void output_chaining_value(const output_t *ctx, uint8_t cv[32]);
+static void output_chaining_value(const blake3_impl_ops_t *ops, const output_t *ctx, uint8_t cv[32]);
 
-static void output_root_bytes(const output_t *ctx, uint64_t seek,
+static void output_root_bytes(const blake3_impl_ops_t *ops, const output_t *ctx, uint64_t seek,
     uint8_t *out, size_t out_len);
 
-static void chunk_state_update(blake3_chunk_state_t *ctx,
+static void chunk_state_update(const blake3_impl_ops_t *ops, blake3_chunk_state_t *ctx,
     const uint8_t *input, size_t input_len);
 
 static output_t chunk_state_output(const blake3_chunk_state_t *ctx);
@@ -82,15 +82,15 @@ static output_t parent_output(const uint8_t block[BLAKE3_BLOCK_LEN],
     const uint32_t key[8], uint8_t flags);
 static size_t left_len(size_t content_len);
 
-static size_t compress_parents_parallel(const uint8_t *child_chaining_values,
+static size_t compress_parents_parallel(const blake3_impl_ops_t *ops, const uint8_t *child_chaining_values,
     size_t num_chaining_values, const uint32_t key[8], uint8_t flags,
     uint8_t *out);
 
-static size_t blake3_compress_subtree_wide(const uint8_t *input,
+static size_t blake3_compress_subtree_wide(const blake3_impl_ops_t *ops, const uint8_t *input,
     size_t input_len, const uint32_t key[8], uint64_t chunk_counter,
     uint8_t flags, uint8_t *out);
 
-static void compress_subtree_to_parent_node(const uint8_t *input,
+static void compress_subtree_to_parent_node(const blake3_impl_ops_t *ops, const uint8_t *input,
     size_t input_len, const uint32_t key[8], uint64_t chunk_counter,
     uint8_t flags, uint8_t out[2 * BLAKE3_OUT_LEN]);
 
@@ -173,9 +173,8 @@ static output_t make_output(const uint32_t input_cv[8],
  * bytes. For that reason, chaining values in the CV stack are represented as
  * bytes.
  */
-static void output_chaining_value(const output_t *ctx, uint8_t cv[32])
+static void output_chaining_value(const blake3_impl_ops_t *ops, const output_t *ctx, uint8_t cv[32])
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 	uint32_t cv_words[8];
 	memcpy(cv_words, ctx->input_cv, 32);
 	ops->compress_in_place(cv_words, ctx->block, ctx->block_len,
@@ -183,10 +182,9 @@ static void output_chaining_value(const output_t *ctx, uint8_t cv[32])
 	store_cv_words(cv, cv_words);
 }
 
-static void output_root_bytes(const output_t *ctx, uint64_t seek,
+static void output_root_bytes(const blake3_impl_ops_t *ops, const output_t *ctx, uint64_t seek,
     uint8_t *out, size_t out_len)
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 	uint64_t output_block_counter = seek / 64;
 	size_t offset_within_block = seek % 64;
 	uint8_t wide_buf[64];
@@ -208,10 +206,9 @@ static void output_root_bytes(const output_t *ctx, uint64_t seek,
 	}
 }
 
-static void chunk_state_update(blake3_chunk_state_t *ctx,
+static void chunk_state_update(const blake3_impl_ops_t *ops, blake3_chunk_state_t *ctx,
     const uint8_t *input, size_t input_len)
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 	if (ctx->buf_len > 0) {
 		size_t take = chunk_state_fill_buf(ctx, input, input_len);
 		input += take;
@@ -276,11 +273,10 @@ static size_t left_len(size_t content_len)
  * number of chunks hashed. These chunks are never the root and never empty;
  * those cases use a different codepath.
  */
-static size_t compress_chunks_parallel(const uint8_t *input,
+static size_t compress_chunks_parallel(const blake3_impl_ops_t * ops, const uint8_t *input,
     size_t input_len, const uint32_t key[8], uint64_t chunk_counter,
     uint8_t flags, uint8_t *out)
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 	const uint8_t *chunks_array[MAX_SIMD_DEGREE];
 	size_t input_position = 0;
 	size_t chunks_array_len = 0;
@@ -303,10 +299,10 @@ static size_t compress_chunks_parallel(const uint8_t *input,
 		blake3_chunk_state_t chunk_state;
 		chunk_state_init(&chunk_state, key, flags);
 		chunk_state.chunk_counter = counter;
-		chunk_state_update(&chunk_state, &input[input_position],
+		chunk_state_update(ops, &chunk_state, &input[input_position],
 		    input_len - input_position);
 		output_t output = chunk_state_output(&chunk_state);
-		output_chaining_value(&output, &out[chunks_array_len *
+		output_chaining_value(ops, &output, &out[chunks_array_len *
 		    BLAKE3_OUT_LEN]);
 		return (chunks_array_len + 1);
 	} else {
@@ -321,11 +317,10 @@ static size_t compress_chunks_parallel(const uint8_t *input,
  * return it as an additional output.) These parents are never the root and
  * never empty; those cases use a different codepath.
  */
-static size_t compress_parents_parallel(const uint8_t *child_chaining_values,
+static size_t compress_parents_parallel(const blake3_impl_ops_t *ops, const uint8_t *child_chaining_values,
     size_t num_chaining_values, const uint32_t key[8], uint8_t flags,
     uint8_t *out)
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 	const uint8_t *parents_array[MAX_SIMD_DEGREE_OR_2];
 	size_t parents_array_len = 0;
 
@@ -368,11 +363,10 @@ static size_t compress_parents_parallel(const uint8_t *child_chaining_values,
  * of implementing this special rule? Because we don't want to limit SIMD or
  * multi-threading parallelism for that update().
  */
-static size_t blake3_compress_subtree_wide(const uint8_t *input,
+static size_t blake3_compress_subtree_wide(const blake3_impl_ops_t *ops, const uint8_t *input,
     size_t input_len, const uint32_t key[8], uint64_t chunk_counter,
     uint8_t flags, uint8_t *out)
 {
-	const blake3_impl_ops_t *ops = blake3_impl_get_ops();
 
 	/*
 	 * Note that the single chunk case does *not* bump the SIMD degree up
@@ -381,7 +375,7 @@ static size_t blake3_compress_subtree_wide(const uint8_t *input,
 	 * 2-chunk case, which can help performance on smaller platforms.
 	 */
 	if (input_len <= (size_t)(ops->degree * BLAKE3_CHUNK_LEN)) {
-		return (compress_chunks_parallel(input, input_len, key,
+		return (compress_chunks_parallel(ops, input, input_len, key,
 		    chunk_counter, flags, out));
 	}
 
@@ -422,9 +416,9 @@ static size_t blake3_compress_subtree_wide(const uint8_t *input,
 	 * Recurse! If this implementation adds multi-threading support in the
 	 * future, this is where it will go.
 	 */
-	size_t left_n = blake3_compress_subtree_wide(input, left_input_len,
+	size_t left_n = blake3_compress_subtree_wide(ops, input, left_input_len,
 	    key, chunk_counter, flags, cv_array);
-	size_t right_n = blake3_compress_subtree_wide(right_input,
+	size_t right_n = blake3_compress_subtree_wide(ops, right_input,
 	    right_input_len, key, right_chunk_counter, flags, right_cvs);
 
 	/*
@@ -440,7 +434,7 @@ static size_t blake3_compress_subtree_wide(const uint8_t *input,
 
 	/* Otherwise, do one layer of parent node compression. */
 	size_t num_chaining_values = left_n + right_n;
-	return compress_parents_parallel(cv_array, num_chaining_values, key,
+	return compress_parents_parallel(ops, cv_array, num_chaining_values, key,
 	    flags, out);
 }
 
@@ -456,12 +450,12 @@ static size_t blake3_compress_subtree_wide(const uint8_t *input,
  * As with compress_subtree_wide(), this function is not used on inputs of 1
  * chunk or less. That's a different codepath.
  */
-static void compress_subtree_to_parent_node(const uint8_t *input,
+static void compress_subtree_to_parent_node(const blake3_impl_ops_t *ops, const uint8_t *input,
     size_t input_len, const uint32_t key[8], uint64_t chunk_counter,
     uint8_t flags, uint8_t out[2 * BLAKE3_OUT_LEN])
 {
 	uint8_t cv_array[MAX_SIMD_DEGREE_OR_2 * BLAKE3_OUT_LEN];
-	size_t num_cvs = blake3_compress_subtree_wide(input, input_len, key,
+	size_t num_cvs = blake3_compress_subtree_wide(ops, input, input_len, key,
 	    chunk_counter, flags, cv_array);
 
 	/*
@@ -471,7 +465,7 @@ static void compress_subtree_to_parent_node(const uint8_t *input,
 	 */
 	uint8_t out_array[MAX_SIMD_DEGREE_OR_2 * BLAKE3_OUT_LEN / 2];
 	while (num_cvs > 2) {
-		num_cvs = compress_parents_parallel(cv_array, num_cvs, key,
+		num_cvs = compress_parents_parallel(ops, cv_array, num_cvs, key,
 		    flags, out_array);
 		memcpy(cv_array, out_array, num_cvs * BLAKE3_OUT_LEN);
 	}
@@ -507,7 +501,7 @@ static void hasher_merge_cv_stack(BLAKE3_CTX *ctx, uint64_t total_len)
 		    &ctx->cv_stack[(ctx->cv_stack_len - 2) * BLAKE3_OUT_LEN];
 		output_t output =
 		    parent_output(parent_node, ctx->key, ctx->chunk.flags);
-		output_chaining_value(&output, parent_node);
+		output_chaining_value(ctx->ops, &output, parent_node);
 		ctx->cv_stack_len -= 1;
 	}
 }
@@ -567,6 +561,7 @@ Blake3_InitKeyed(BLAKE3_CTX *ctx, const uint8_t key[BLAKE3_KEY_LEN])
 	uint32_t key_words[8];
 	load_key_words(key, key_words);
 	hasher_init_base(ctx, key_words, KEYED_HASH);
+	ctx->ops = blake3_impl_get_ops();
 }
 
 static void
@@ -593,7 +588,7 @@ Blake3_Update2(BLAKE3_CTX *ctx, const void *input, size_t input_len)
 		if (take > input_len) {
 			take = input_len;
 		}
-		chunk_state_update(&ctx->chunk, input_bytes, take);
+		chunk_state_update(ctx->ops, &ctx->chunk, input_bytes, take);
 		input_bytes += take;
 		input_len -= take;
 		/*
@@ -604,7 +599,7 @@ Blake3_Update2(BLAKE3_CTX *ctx, const void *input, size_t input_len)
 		if (input_len > 0) {
 			output_t output = chunk_state_output(&ctx->chunk);
 			uint8_t chunk_cv[32];
-			output_chaining_value(&output, chunk_cv);
+			output_chaining_value(ctx->ops, &output, chunk_cv);
 			hasher_push_cv(ctx, chunk_cv, ctx->chunk.chunk_counter);
 			chunk_state_reset(&ctx->chunk, ctx->key,
 			    ctx->chunk.chunk_counter + 1);
@@ -667,11 +662,11 @@ Blake3_Update2(BLAKE3_CTX *ctx, const void *input, size_t input_len)
 			chunk_state_init(&chunk_state, ctx->key,
 			    ctx->chunk.flags);
 			chunk_state.chunk_counter = ctx->chunk.chunk_counter;
-			chunk_state_update(&chunk_state, input_bytes,
+			chunk_state_update(ctx->ops, &chunk_state, input_bytes,
 			    subtree_len);
 			output_t output = chunk_state_output(&chunk_state);
 			uint8_t cv[BLAKE3_OUT_LEN];
-			output_chaining_value(&output, cv);
+			output_chaining_value(ctx->ops, &output, cv);
 			hasher_push_cv(ctx, cv, chunk_state.chunk_counter);
 		} else {
 			/*
@@ -680,7 +675,7 @@ Blake3_Update2(BLAKE3_CTX *ctx, const void *input, size_t input_len)
 			 * enough input.
 			 */
 			uint8_t cv_pair[2 * BLAKE3_OUT_LEN];
-			compress_subtree_to_parent_node(input_bytes,
+			compress_subtree_to_parent_node(ctx->ops, input_bytes,
 			    subtree_len, ctx->key, ctx-> chunk.chunk_counter,
 			    ctx->chunk.flags, cv_pair);
 			hasher_push_cv(ctx, cv_pair, ctx->chunk.chunk_counter);
@@ -702,7 +697,7 @@ Blake3_Update2(BLAKE3_CTX *ctx, const void *input, size_t input_len)
 	 * blake3_hasher_finalize below.
 	 */
 	if (input_len > 0) {
-		chunk_state_update(&ctx->chunk, input_bytes, input_len);
+		chunk_state_update(ctx->ops, &ctx->chunk, input_bytes, input_len);
 		hasher_merge_cv_stack(ctx, ctx->chunk.chunk_counter);
 	}
 }
@@ -740,13 +735,15 @@ Blake3_FinalSeek(const BLAKE3_CTX *ctx, uint64_t seek, uint8_t *out,
 	 *   std::vector<uint8_t> v;
 	 *   blake3_hasher_finalize(&hasher, v.data(), v.size());
 	 */
+//	zfs_dbgmsg("B3FS0: %p %lu %lu %lu %llx:%llx:%llx:%llx", ctx, out_len, ctx->cv_stack_len, chunk_state_len(&ctx->chunk), *(uint64_t *) &out[0],*(uint64_t *) &out[8],*(uint64_t *) &out[16],*(uint64_t *) &out[24]);
 	if (out_len == 0) {
 		return;
 	}
 	/* If the subtree stack is empty, then the current chunk is the root. */
 	if (ctx->cv_stack_len == 0) {
 		output_t output = chunk_state_output(&ctx->chunk);
-		output_root_bytes(&output, seek, out, out_len);
+		output_root_bytes(ctx->ops, &output, seek, out, out_len);
+//		zfs_dbgmsg("B3FS1: %p %lu %llx:%llx:%llx:%llx", ctx, seek, *(uint64_t *) &out[0],*(uint64_t *) &out[8],*(uint64_t *) &out[16],*(uint64_t *) &out[24]);
 		return;
 	}
 	/*
@@ -773,11 +770,13 @@ Blake3_FinalSeek(const BLAKE3_CTX *ctx, uint64_t seek, uint8_t *out,
 		cvs_remaining -= 1;
 		uint8_t parent_block[BLAKE3_BLOCK_LEN];
 		memcpy(parent_block, &ctx->cv_stack[cvs_remaining * 32], 32);
-		output_chaining_value(&output, &parent_block[32]);
+//		zfs_dbgmsg("B3FSx: %u %llx:%llx:%llx:%llx:%llx:%llx:%llx:%llx",cvs_remaining,*(uint64_t *) &parent_block[0],*(uint64_t *) &parent_block[8],*(uint64_t *) &parent_block[16],*(uint64_t *) &parent_block[24],*(uint64_t *) &parent_block[32],*(uint64_t *) &parent_block[40],*(uint64_t *) &parent_block[48],*(uint64_t *) &parent_block[56]);
+		output_chaining_value(ctx->ops, &output, &parent_block[32]);
 		output = parent_output(parent_block, ctx->key,
 		    ctx->chunk.flags);
 	}
-	output_root_bytes(&output, seek, out, out_len);
+	output_root_bytes(ctx->ops, &output, seek, out, out_len);
+//	zfs_dbgmsg("B3FS2: %p %lu %llx:%llx:%llx:%llx", ctx, seek, *(uint64_t *) &out[0],*(uint64_t *) &out[8],*(uint64_t *) &out[16],*(uint64_t *) &out[24]);
 }
 
 #ifdef _KERNEL

@@ -7,6 +7,15 @@ VPATH = \
 # Includes kernel code, generate warnings for large stack frames
 AM_CFLAGS += $(FRAME_LARGER_THAN)
 
+algs/blake3/blake3.$(OBJEXT): CFLAGS += -mno-sse2 -mno-sse4.1 -mno-avx2 -mno-avx512f
+algs/blake3/blake3.l$(OBJEXT): CFLAGS += -mno-sse2 -mno-sse4.1 -mno-avx2 -mno-avx512f
+algs/blake3/blake3_sse2.$(OBJEXT): CFLAGS += -msse2 -march=native
+algs/blake3/blake3_sse2.l$(OBJEXT): CFLAGS += -msse2 -march=native
+algs/blake3/blake3_sse41.$(OBJEXT): CFLAGS += -msse4.1 -march=native
+algs/blake3/blake3_sse41.l$(OBJEXT): CFLAGS += -msse4.1 -march=native
+algs/blake3/blake3_avx2.$(OBJEXT): CFLAGS += -mavx2 -march=native
+algs/blake3/blake3_avx2.l$(OBJEXT): CFLAGS += -mavx2 -march=native
+
 noinst_LTLIBRARIES = libicp.la
 
 if TARGET_CPU_AARCH64
@@ -33,10 +42,7 @@ ASM_SOURCES_AS = \
 	asm-x86_64/modes/ghash-x86_64.S \
 	asm-x86_64/sha2/sha256_impl.S \
 	asm-x86_64/sha2/sha512_impl.S \
-	asm-x86_64/blake3/blake3_avx2.S \
-	asm-x86_64/blake3/blake3_avx512.S \
-	asm-x86_64/blake3/blake3_sse2.S \
-	asm-x86_64/blake3/blake3_sse41.S
+	asm-x86_64/blake3/blake3_avx512.S
 else
 ASM_SOURCES_C =
 ASM_SOURCES_AS =
@@ -56,8 +62,12 @@ KERNEL_C = \
 	algs/aes/aes_modes.c \
 	algs/blake3/blake3.c \
 	algs/blake3/blake3_generic.c \
+	algs/blake3/blake3_portable.c \
 	algs/blake3/blake3_impl.c \
 	algs/blake3/blake3_x86-64.c \
+	algs/blake3/blake3_avx2.c \
+	algs/blake3/blake3_sse2.c \
+	algs/blake3/blake3_sse41.c \
 	algs/edonr/edonr.c \
 	algs/modes/modes.c \
 	algs/modes/cbc.c \

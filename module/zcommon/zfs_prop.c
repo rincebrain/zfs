@@ -1013,6 +1013,7 @@ EXPORT_SYMBOL(zfs_kfpu_fpregs);
 static int __init
 zcommon_init(void)
 {
+	zfs_dbgmsg_init();
 	int error = kfpu_init();
 	if (error)
 		return (error);
@@ -1027,6 +1028,7 @@ zcommon_fini(void)
 {
 	fletcher_4_fini();
 	kfpu_fini();
+	zfs_dbgmsg_fini();
 }
 
 module_init_early(zcommon_init);

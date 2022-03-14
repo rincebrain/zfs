@@ -70,6 +70,7 @@ AC_CONFIG_FILES([
 	cmd/arc_summary/Makefile
 	cmd/arcstat/Makefile
 	cmd/dbufstat/Makefile
+	cmd/dobench/Makefile
 	cmd/fsck_zfs/Makefile
 	cmd/mount_zfs/Makefile
 	cmd/raidz_test/Makefile
@@ -176,6 +177,7 @@ AC_CONFIG_FILES([
 	module/lua/Makefile
 	module/nvpair/Makefile
 	module/os/linux/spl/Makefile
+	module/os/linux/zcommon/Makefile
 	module/os/linux/zfs/Makefile
 	module/spl/Makefile
 	module/unicode/Makefile

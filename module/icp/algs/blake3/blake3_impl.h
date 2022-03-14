@@ -36,33 +36,6 @@ extern "C" {
 #include <sys/blake3.h>
 #include <sys/simd.h>
 
-/*
- * Methods used to define BLAKE3 assembler implementations
- */
-typedef void (*blake3_compress_in_place_f)(uint32_t cv[8],
-    const uint8_t block[BLAKE3_BLOCK_LEN],
-    uint8_t block_len, uint64_t counter,
-    uint8_t flags);
-
-typedef void (*blake3_compress_xof_f)(const uint32_t cv[8],
-    const uint8_t block[BLAKE3_BLOCK_LEN], uint8_t block_len,
-    uint64_t counter, uint8_t flags, uint8_t out[64]);
-
-typedef void (*blake3_hash_many_f)(const uint8_t * const *inputs,
-    size_t num_inputs, size_t blocks, const uint32_t key[8],
-    uint64_t counter, boolean_t increment_counter, uint8_t flags,
-    uint8_t flags_start, uint8_t flags_end, uint8_t *out);
-
-typedef boolean_t (*blake3_is_supported_f)(void);
-
-typedef struct blake3_impl_ops {
-	blake3_compress_in_place_f compress_in_place;
-	blake3_compress_xof_f compress_xof;
-	blake3_hash_many_f hash_many;
-	blake3_is_supported_f is_supported;
-	int degree;
-	const char *name;
-} blake3_impl_ops_t;
 
 /* needed by neon */
 void blake3_compress_xof_generic(const uint32_t cv[8],

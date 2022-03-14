@@ -436,6 +436,7 @@ uint64_t zopt_rarely = 60ULL * NANOSEC;		/* every 60 seconds */
 	    .zi_funcname = # func }
 
 ztest_info_t ztest_info[] = {
+#if 0
 	ZTI_INIT(ztest_dmu_read_write, 1, &zopt_always),
 	ZTI_INIT(ztest_dmu_write_parallel, 10, &zopt_always),
 	ZTI_INIT(ztest_dmu_object_alloc_free, 1, &zopt_always),
@@ -450,9 +451,11 @@ ztest_info_t ztest_info[] = {
 	ZTI_INIT(ztest_dmu_objset_create_destroy, 1, &zopt_often),
 	ZTI_INIT(ztest_dsl_prop_get_set, 1, &zopt_often),
 	ZTI_INIT(ztest_spa_prop_get_set, 1, &zopt_sometimes),
+#endif
 #if 0
 	ZTI_INIT(ztest_dmu_prealloc, 1, &zopt_sometimes),
 #endif
+#if 0
 	ZTI_INIT(ztest_fzap, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_dmu_snapshot_create_destroy, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_spa_create_destroy, 1, &zopt_sometimes),
@@ -472,10 +475,13 @@ ztest_info_t ztest_info[] = {
 	ZTI_INIT(ztest_spa_checkpoint_create_discard, 1, &zopt_rarely),
 	ZTI_INIT(ztest_initialize, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_trim, 1, &zopt_sometimes),
-	ZTI_INIT(ztest_blake3, 1, &zopt_rarely),
+#endif
+	ZTI_INIT(ztest_blake3, 1, &zopt_often),
+#if 0
 	ZTI_INIT(ztest_fletcher, 1, &zopt_rarely),
 	ZTI_INIT(ztest_fletcher_incr, 1, &zopt_rarely),
 	ZTI_INIT(ztest_verify_dnode_bt, 1, &zopt_sometimes),
+#endif
 };
 
 #define	ZTEST_FUNCS	(sizeof (ztest_info) / sizeof (ztest_info_t))
@@ -6442,7 +6448,7 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 		zc_ref_byteswap = zc_ref;
 		ZIO_CHECKSUM_BSWAP(&zc_ref_byteswap);
 
-		VERIFY0(blake3_set_impl_name("cycle"));
+		VERIFY0(blake3_set_impl_name("avx2"));
 		while (run_count-- > 0) {
 			zio_cksum_t zc;
 			zio_cksum_t zc_byteswap;
@@ -6452,6 +6458,37 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 			abd_checksum_blake3_byteswap(abd_data, size, templ,
 			    &zc_byteswap);
 
+			if (!ZIO_CHECKSUM_EQUAL(zc,zc_ref)) {
+				zfs_dbgmsg("Done broke: %p %p %p %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx",
+				&zc,
+				&zc_ref,
+				&ctx,
+				zc.zc_word[0],
+				zc.zc_word[1],
+				zc.zc_word[2],
+				zc.zc_word[3],
+				zc_ref.zc_word[0],
+				zc_ref.zc_word[1],
+				zc_ref.zc_word[2],
+				zc_ref.zc_word[3]
+				);
+			}
+			if (!ZIO_CHECKSUM_EQUAL(zc_byteswap,zc_ref_byteswap)) {
+				zfs_dbgmsg("Done broke: %p %p %p %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx",
+				&zc_byteswap,
+				&zc_ref_byteswap,
+				&ctx,
+				BSWAP_64(zc_byteswap.zc_word[0]),
+				BSWAP_64(zc_byteswap.zc_word[1]),
+				BSWAP_64(zc_byteswap.zc_word[2]),
+				BSWAP_64(zc_byteswap.zc_word[3]),
+				BSWAP_64(zc_ref_byteswap.zc_word[0]),
+				BSWAP_64(zc_ref_byteswap.zc_word[1]), 
+				BSWAP_64(zc_ref_byteswap.zc_word[2]),
+				BSWAP_64(zc_ref_byteswap.zc_word[3])
+				);
+			}
+
 			VERIFY0(bcmp(&zc, &zc_ref, sizeof (zc)));
 			VERIFY0(bcmp(&zc_byteswap, &zc_ref_byteswap,
 			    sizeof (zc_byteswap)));
@@ -6460,6 +6497,37 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 			abd_checksum_blake3_native(abd_meta, size, templ, &zc);
 			abd_checksum_blake3_byteswap(abd_meta, size, templ,
 			    &zc_byteswap);
+
+			if (!ZIO_CHECKSUM_EQUAL(zc,zc_ref)) {
+				zfs_dbgmsg("Done broke: %p %p %p %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx",
+				&zc,
+				&zc_ref,
+				&ctx,
+				zc.zc_word[0],
+				zc.zc_word[1],
+				zc.zc_word[2],
+				zc.zc_word[3],
+				zc_ref.zc_word[0],
+				zc_ref.zc_word[1],
+				zc_ref.zc_word[2],
+				zc_ref.zc_word[3]
+				);
+			}
+			if (!ZIO_CHECKSUM_EQUAL(zc_byteswap,zc_ref_byteswap)) {
+				zfs_dbgmsg("Done broke: %p %p %p %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx",
+				&zc_byteswap,
+				&zc_ref_byteswap,
+				&ctx,
+				BSWAP_64(zc_byteswap.zc_word[0]),
+				BSWAP_64(zc_byteswap.zc_word[1]),
+				BSWAP_64(zc_byteswap.zc_word[2]),
+				BSWAP_64(zc_byteswap.zc_word[3]),
+				BSWAP_64(zc_ref_byteswap.zc_word[0]),
+				BSWAP_64(zc_ref_byteswap.zc_word[1]), 
+				BSWAP_64(zc_ref_byteswap.zc_word[2]),
+				BSWAP_64(zc_ref_byteswap.zc_word[3])
+				);
+			}
 
 			VERIFY0(bcmp(&zc, &zc_ref, sizeof (zc)));
 			VERIFY0(bcmp(&zc_byteswap, &zc_ref_byteswap,
