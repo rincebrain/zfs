@@ -284,14 +284,14 @@ static void validsums(zio_cksum_t *base, chksum_stat_t *cs) {
 	#ifndef _KERNEL
 		printf("%s (%d) %llx:%llx:%llx:%llx != %llx:%llx:%llx:%llx\n",
 			cs->name, i,
-			base[i].zc_word[0],
-			base[i].zc_word[1],
-			base[i].zc_word[2],
-			base[i].zc_word[3],
-			cs->chkme[i].zc_word[0],
-			cs->chkme[i].zc_word[1],
-			cs->chkme[i].zc_word[2],
-			cs->chkme[i].zc_word[3]);
+			(u_longlong_t) base[i].zc_word[0],
+			(u_longlong_t) base[i].zc_word[1],
+			(u_longlong_t) base[i].zc_word[2],
+			(u_longlong_t) base[i].zc_word[3],
+			(u_longlong_t) cs->chkme[i].zc_word[0],
+			(u_longlong_t) cs->chkme[i].zc_word[1],
+			(u_longlong_t) cs->chkme[i].zc_word[2],
+			(u_longlong_t) cs->chkme[i].zc_word[3]);
 	#endif
 	}
 	}

@@ -6448,7 +6448,7 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 		zc_ref_byteswap = zc_ref;
 		ZIO_CHECKSUM_BSWAP(&zc_ref_byteswap);
 
-		VERIFY0(blake3_set_impl_name("avx2"));
+		VERIFY0(blake3_set_impl_name("cycle"));
 		while (run_count-- > 0) {
 			zio_cksum_t zc;
 			zio_cksum_t zc_byteswap;
@@ -6463,14 +6463,14 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 				&zc,
 				&zc_ref,
 				&ctx,
-				zc.zc_word[0],
-				zc.zc_word[1],
-				zc.zc_word[2],
-				zc.zc_word[3],
-				zc_ref.zc_word[0],
-				zc_ref.zc_word[1],
-				zc_ref.zc_word[2],
-				zc_ref.zc_word[3]
+				(u_longlong_t) zc.zc_word[0],
+				(u_longlong_t) zc.zc_word[1],
+				(u_longlong_t) zc.zc_word[2],
+				(u_longlong_t) zc.zc_word[3],
+				(u_longlong_t) zc_ref.zc_word[0],
+				(u_longlong_t) zc_ref.zc_word[1],
+				(u_longlong_t) zc_ref.zc_word[2],
+				(u_longlong_t) zc_ref.zc_word[3]
 				);
 			}
 			if (!ZIO_CHECKSUM_EQUAL(zc_byteswap,zc_ref_byteswap)) {
@@ -6478,14 +6478,14 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 				&zc_byteswap,
 				&zc_ref_byteswap,
 				&ctx,
-				BSWAP_64(zc_byteswap.zc_word[0]),
-				BSWAP_64(zc_byteswap.zc_word[1]),
-				BSWAP_64(zc_byteswap.zc_word[2]),
-				BSWAP_64(zc_byteswap.zc_word[3]),
-				BSWAP_64(zc_ref_byteswap.zc_word[0]),
-				BSWAP_64(zc_ref_byteswap.zc_word[1]), 
-				BSWAP_64(zc_ref_byteswap.zc_word[2]),
-				BSWAP_64(zc_ref_byteswap.zc_word[3])
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[0]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[1]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[2]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[3]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[0]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[1]), 
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[2]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[3])
 				);
 			}
 
@@ -6503,14 +6503,14 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 				&zc,
 				&zc_ref,
 				&ctx,
-				zc.zc_word[0],
-				zc.zc_word[1],
-				zc.zc_word[2],
-				zc.zc_word[3],
-				zc_ref.zc_word[0],
-				zc_ref.zc_word[1],
-				zc_ref.zc_word[2],
-				zc_ref.zc_word[3]
+				(u_longlong_t) zc.zc_word[0],
+				(u_longlong_t) zc.zc_word[1],
+				(u_longlong_t) zc.zc_word[2],
+				(u_longlong_t) zc.zc_word[3],
+				(u_longlong_t) zc_ref.zc_word[0],
+				(u_longlong_t) zc_ref.zc_word[1],
+				(u_longlong_t) zc_ref.zc_word[2],
+				(u_longlong_t) zc_ref.zc_word[3]
 				);
 			}
 			if (!ZIO_CHECKSUM_EQUAL(zc_byteswap,zc_ref_byteswap)) {
@@ -6518,14 +6518,14 @@ ztest_blake3(ztest_ds_t *zd, uint64_t id)
 				&zc_byteswap,
 				&zc_ref_byteswap,
 				&ctx,
-				BSWAP_64(zc_byteswap.zc_word[0]),
-				BSWAP_64(zc_byteswap.zc_word[1]),
-				BSWAP_64(zc_byteswap.zc_word[2]),
-				BSWAP_64(zc_byteswap.zc_word[3]),
-				BSWAP_64(zc_ref_byteswap.zc_word[0]),
-				BSWAP_64(zc_ref_byteswap.zc_word[1]), 
-				BSWAP_64(zc_ref_byteswap.zc_word[2]),
-				BSWAP_64(zc_ref_byteswap.zc_word[3])
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[0]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[1]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[2]),
+				(u_longlong_t) BSWAP_64(zc_byteswap.zc_word[3]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[0]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[1]), 
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[2]),
+				(u_longlong_t) BSWAP_64(zc_ref_byteswap.zc_word[3])
 				);
 			}
 

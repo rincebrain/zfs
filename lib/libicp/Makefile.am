@@ -15,6 +15,8 @@ algs/blake3/blake3_sse41.$(OBJEXT): CFLAGS += -msse4.1 -march=native
 algs/blake3/blake3_sse41.l$(OBJEXT): CFLAGS += -msse4.1 -march=native
 algs/blake3/blake3_avx2.$(OBJEXT): CFLAGS += -mavx2 -march=native
 algs/blake3/blake3_avx2.l$(OBJEXT): CFLAGS += -mavx2 -march=native
+algs/blake3/blake3_avx512.$(OBJEXT): CFLAGS += -mavx512f -march=native
+algs/blake3/blake3_avx512.l$(OBJEXT): CFLAGS += -mavx512f -march=native
 
 noinst_LTLIBRARIES = libicp.la
 
@@ -41,8 +43,7 @@ ASM_SOURCES_AS = \
 	asm-x86_64/modes/aesni-gcm-x86_64.S \
 	asm-x86_64/modes/ghash-x86_64.S \
 	asm-x86_64/sha2/sha256_impl.S \
-	asm-x86_64/sha2/sha512_impl.S \
-	asm-x86_64/blake3/blake3_avx512.S
+	asm-x86_64/sha2/sha512_impl.S
 else
 ASM_SOURCES_C =
 ASM_SOURCES_AS =
@@ -68,6 +69,7 @@ KERNEL_C = \
 	algs/blake3/blake3_avx2.c \
 	algs/blake3/blake3_sse2.c \
 	algs/blake3/blake3_sse41.c \
+	algs/blake3/blake3_avx512.c \
 	algs/edonr/edonr.c \
 	algs/modes/modes.c \
 	algs/modes/cbc.c \
