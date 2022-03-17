@@ -50,7 +50,23 @@
 #include "lib/zstd.h"
 #include "lib/common/zstd_errors.h"
 
-static kstat_t *zstd_ksp = NULL;
+static int zstd_lz4_pass = 1;
+//static int zstd_firstpass_level = ZIO_ZSTD_LEVEL_1;
+static int zstd_firstpass_mode = 1;
+static int zstd_cutoff_level = ZIO_ZSTD_LEVEL_3;
+static int zstd_zstd_pass = 1;
+static int zstd_hard_moed = 0;
+static int zstd_lz4_shift_size = 3;
+//static int zstd_zstd_shift_size = 3;
+static int zstd_ea_division_mode = 1;
+static int zstd_ea_divisor = 2;
+static int zstd_ea_level_factor = 2;
+//static unsigned int zstd_abort_size = 131072;
+// scaled by 2 because we're starting at zstd-3 now
+static unsigned int zstd_abort_size = (131072);
+
+kstat_t *zstd_ksp = NULL;
+
 
 typedef struct zstd_stats {
 	kstat_named_t	zstd_stat_alloc_fail;
@@ -62,6 +78,21 @@ typedef struct zstd_stats {
 	kstat_named_t	zstd_stat_dec_header_inval;
 	kstat_named_t	zstd_stat_com_fail;
 	kstat_named_t	zstd_stat_dec_fail;
+/*
+ * LZ4 first-pass early abort verdict
+ */
+	kstat_named_t	zstd_stat_lz4pass_allowed;
+	kstat_named_t	zstd_stat_lz4pass_rejected;
+/*
+ * zstd-1 second-pass early abort verdict
+ */
+	kstat_named_t	zstd_stat_zstdpass_allowed;
+	kstat_named_t	zstd_stat_zstdpass_rejected;
+/*
+ * We excluded this from early abort for some reason
+ */
+	kstat_named_t	zstd_stat_passignored;
+	kstat_named_t	zstd_stat_passignored_size;
 	kstat_named_t	zstd_stat_buffers;
 	kstat_named_t	zstd_stat_size;
 } zstd_stats_t;
@@ -76,9 +107,44 @@ static zstd_stats_t zstd_stats = {
 	{ "decompress_header_invalid",	KSTAT_DATA_UINT64 },
 	{ "compress_failed",		KSTAT_DATA_UINT64 },
 	{ "decompress_failed",		KSTAT_DATA_UINT64 },
+	{ "lz4pass_allowed",		KSTAT_DATA_UINT64 },
+	{ "lz4pass_rejected",		KSTAT_DATA_UINT64 },
+	{ "zstdpass_allowed",		KSTAT_DATA_UINT64 },
+	{ "zstdpass_rejected",		KSTAT_DATA_UINT64 },
+	{ "passignored",		KSTAT_DATA_UINT64 },
+	{ "passignored_size",		KSTAT_DATA_UINT64 },
 	{ "buffers",			KSTAT_DATA_UINT64 },
 	{ "size",			KSTAT_DATA_UINT64 },
 };
+
+#ifdef _KERNEL
+static int
+kstat_zstd_update(kstat_t *ksp, int rw) {
+
+        ASSERT(ksp != NULL);
+
+        if (rw == KSTAT_WRITE && ksp == zstd_ksp) {
+        	ZSTDSTAT_ZERO(zstd_stat_alloc_fail);
+        	ZSTDSTAT_ZERO(zstd_stat_alloc_fallback);
+        	ZSTDSTAT_ZERO(zstd_stat_com_alloc_fail);
+        	ZSTDSTAT_ZERO(zstd_stat_dec_alloc_fail);
+        	ZSTDSTAT_ZERO(zstd_stat_com_inval);
+        	ZSTDSTAT_ZERO(zstd_stat_dec_inval);
+        	ZSTDSTAT_ZERO(zstd_stat_dec_header_inval);
+        	ZSTDSTAT_ZERO(zstd_stat_com_fail);
+        	ZSTDSTAT_ZERO(zstd_stat_dec_fail);
+        	ZSTDSTAT_ZERO(zstd_stat_lz4pass_allowed);
+        	ZSTDSTAT_ZERO(zstd_stat_lz4pass_rejected);
+        	ZSTDSTAT_ZERO(zstd_stat_zstdpass_allowed);
+        	ZSTDSTAT_ZERO(zstd_stat_zstdpass_rejected);
+        	ZSTDSTAT_ZERO(zstd_stat_passignored);
+        	ZSTDSTAT_ZERO(zstd_stat_passignored_size);
+        }
+
+        return (0);
+
+}
+#endif
 
 /* Enums describing the allocator type specified by kmem_type in zstd_kmem */
 enum zstd_kmem_type {
@@ -377,6 +443,121 @@ zstd_enum_to_level(enum zio_zstd_levels level, int16_t *zstd_level)
 }
 
 
+size_t
+zfs_zstd_compress_wrap(void *s_start, void *d_start, size_t s_len, size_t d_len,
+    int level)
+{
+	int16_t zstd_level;
+	if (zstd_enum_to_level(level, &zstd_level)) {
+		ZSTDSTAT_BUMP(zstd_stat_com_inval);
+		return (s_len);
+	}
+	/*
+	 * A zstd early abort heuristic.
+	 *
+	 * - Zeroth, if this is <= zstd-3, or < zstd_abort_size (currently
+	 *   128k), don't try any of this, just go.
+	 *   (because experimentally that was a reasonable cutoff for a perf win
+	 *   with tiny ratio change)
+	 * - First, we try LZ4 compression, and if it doesn't early abort, we
+	 *   jump directly to whatever compression level we intended to try.
+	 * - Second, we try zstd-1 - if that errors out (usually, but not
+	 *   exclusively, if it would overflow), we give up early.
+	 *
+	 *   If it works, instead we go on and compress anyway.
+	 *
+	 * Why two passes? LZ4 alone gets you a lot of the way, but on highly
+	 * compressible data, it was losing up to 8.5% of the compressed
+	 * savings versus no early abort, and all the zstd-fast levels are
+	 * worse indications on their own than LZ4, and don't improve the LZ4
+	 * pass noticably if stacked like this.
+	 */
+	/*
+	 * A new experiment - a scaling factor.
+	 * Obviously zstd scales worse than linearly as level increases. So
+	 * presumably the point where it's cheaper to just do the compression
+	 * is going to change too.
+	 *
+	 * The thinking goes:
+	 * - zstd-2 is too close to zstd-1 for this to ever make sense
+	 * - starting with zstd-3, let's try a cutoff of
+	 *  - (zstd_abort_size) / (zstd_scaling_factor)
+	 *  where zstd_scaling_factor = 
+	 *    (((zstd_level - zstd_cutoff_level) / zstd_ea_level_factor) + 1)
+	 *  So, for concrete example, with zstd_ea_level_factor = 2, we'd expect
+	 *  a cutoff of zstd_abort_size at zstd-3, zstd_abort_size / 2 at 4-5,
+	 *  zstd_abort_size / 4 at 6-7, and so on. 
+	 *  Naturally, this is going to need to have a hard cutoff somewhere,
+	 *  since this pass probably ~never makes sense below, say, 4k or 8k.
+	 */
+	size_t actual_abort_size = zstd_abort_size;
+	// want it to only compress at 256k+ for zstd-3, but a default of 128k
+	// below that even with the pass off.
+#if 0
+	if (zstd_level == zstd_cutoff_level)
+		actual_abort_size *= 2;
+	if (zstd_ea_division_mode && zstd_level >= zstd_cutoff_level) {
+		int wip = ((zstd_level+1 - zstd_cutoff_level) / (zstd_ea_level_factor));
+		while (wip > 0) {
+			actual_abort_size /= zstd_ea_divisor;
+			wip--;
+		}
+//		zfs_dbgmsg("Abort debug: zstd_level %d zstd_cutoff_level %d actual_abort_size %lu wip %d", zstd_level, zstd_cutoff_level, actual_abort_size, ((zstd_level+1 - zstd_cutoff_level) / (zstd_ea_level_factor)));
+		if (actual_abort_size < 8193)
+			actual_abort_size = 8193;
+//		zfs_dbgmsg("Abort debug: zstd_level %d zstd_cutoff_level %d actual_abort_size %lu wip %d", zstd_level, zstd_cutoff_level, actual_abort_size, ((zstd_level+1 - zstd_cutoff_level) / (zstd_ea_level_factor)));
+	}
+#endif
+	if ((zstd_lz4_pass > 0 && zstd_level >= zstd_cutoff_level && s_len >= actual_abort_size) ||( zstd_hard_moed > 0)) {
+		int pass_len = 1;
+		int lz4_len = (s_len) - (s_len >> zstd_lz4_shift_size);
+		pass_len = lz4_compress_zfs(s_start, d_start, s_len, lz4_len, 0);
+		if (pass_len < lz4_len && !zstd_hard_moed) {
+			ZSTDSTAT_BUMP(zstd_stat_lz4pass_allowed);
+			goto keep_trying;
+		}
+		ZSTDSTAT_BUMP(zstd_stat_lz4pass_rejected);
+		if (!zstd_zstd_pass) {
+			// if zstd_hard_moed is set, we don't want to trigger abort,
+			// just compress the shit out of things.
+			if (!zstd_hard_moed)
+				return (s_len);
+			else
+				goto keep_trying;
+		}
+//		int zstd_len = (s_len) - (s_len >> zstd_zstd_shift_size);
+		int zstd_len = d_len;
+		int firstpass_level = 1;
+		switch (zstd_firstpass_mode) {
+			case 3:
+				firstpass_level=-420;
+				break;
+			case 2:
+				firstpass_level=2;
+				zfs_fallthrough;
+			case 1:
+				zfs_fallthrough;
+			default:
+				break;
+		}
+		pass_len = zfs_zstd_compress(s_start, d_start, s_len, zstd_len,
+		    firstpass_level);
+		if ((pass_len == s_len || pass_len <= 0 || pass_len > zstd_len) && !zstd_hard_moed) {
+			ZSTDSTAT_BUMP(zstd_stat_zstdpass_rejected);
+			return (s_len);
+		}
+		ZSTDSTAT_BUMP(zstd_stat_zstdpass_allowed);
+	} else {
+		ZSTDSTAT_BUMP(zstd_stat_passignored);
+		if (s_len < actual_abort_size) {
+			ZSTDSTAT_BUMP(zstd_stat_passignored_size);
+		}
+	}
+keep_trying:
+	return (zfs_zstd_compress(s_start, d_start, s_len, d_len, level));
+
+}
+
 /* Compress block using zstd */
 size_t
 zfs_zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len,
@@ -390,9 +571,12 @@ zfs_zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len,
 	hdr = (zfs_zstdhdr_t *)d_start;
 
 	/* Skip compression if the specified level is invalid */
-	if (zstd_enum_to_level(level, &zstd_level)) {
+	if (zstd_enum_to_level(level, &zstd_level) && (level != -420)) {
 		ZSTDSTAT_BUMP(zstd_stat_com_inval);
 		return (s_len);
+	}
+	if (level == -420) {
+		zstd_enum_to_level(2, &zstd_level);
 	}
 
 	ASSERT3U(d_len, >=, sizeof (*hdr));
@@ -409,10 +593,25 @@ zfs_zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len,
 		ZSTDSTAT_BUMP(zstd_stat_com_alloc_fail);
 		return (s_len);
 	}
-
 	/* Set the compression level */
 	ZSTD_CCtx_setParameter(cctx, ZSTD_c_compressionLevel, zstd_level);
 
+	if (level == -420) {
+		// tweak it to hell
+		ZSTD_compressionParameters newevil = 
+		    { 21, 15, 16,  1,  6,  0, ZSTD_fast    };  /* level  2 */
+//		    { 21, 13, 14,  1,  7,  0, ZSTD_fast   };  /* level  3, >256k, diff compressor */
+		//  { 19, 13, 14,  1,  7,  0, ZSTD_fast    },  /* level  1 */
+
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_windowLog, newevil.windowLog);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_hashLog, newevil.hashLog);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_chainLog, newevil.chainLog);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_searchLog, newevil.searchLog);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_minMatch, newevil.minMatch);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_targetLength, newevil.targetLength);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_strategy, newevil.strategy);
+		ZSTD_CCtx_setParameter(cctx, ZSTD_c_experimentalParam7, s_len);
+	}
 	/* Use the "magicless" zstd header which saves us 4 header bytes */
 	ZSTD_CCtx_setParameter(cctx, ZSTD_c_format, ZSTD_f_zstd1_magicless);
 
@@ -437,8 +636,10 @@ zfs_zstd_compress(void *s_start, void *d_start, size_t s_len, size_t d_len,
 		 * too small, that is not a failure. Everything else is a
 		 * failure, so increment the compression failure counter.
 		 */
-		if (ZSTD_getErrorCode(c_len) != ZSTD_error_dstSize_tooSmall) {
+		int err = ZSTD_getErrorCode(c_len);
+		if (err != ZSTD_error_dstSize_tooSmall) {
 			ZSTDSTAT_BUMP(zstd_stat_com_fail);
+			zfs_dbgmsg("Error: %s", ZSTD_getErrorString(err));
 		}
 		return (s_len);
 	}
@@ -753,6 +954,9 @@ zstd_init(void)
 	if (zstd_ksp != NULL) {
 		zstd_ksp->ks_data = &zstd_stats;
 		kstat_install(zstd_ksp);
+#ifdef _KERNEL
+		zstd_ksp->ks_update = kstat_zstd_update;
+#endif
 	}
 
 	return (0);
@@ -781,8 +985,27 @@ module_init(zstd_init);
 module_exit(zstd_fini);
 #endif
 
-EXPORT_SYMBOL(zfs_zstd_compress);
-EXPORT_SYMBOL(zfs_zstd_decompress_level);
-EXPORT_SYMBOL(zfs_zstd_decompress);
-EXPORT_SYMBOL(zfs_zstd_cache_reap_now);
+ZFS_MODULE_PARAM(zfs, zstd_, lz4_pass, INT, ZMOD_RW,
+	"Try an LZ4 pass to determine whether we should early abort.");
+ZFS_MODULE_PARAM(zfs, zstd_, zstd_pass, INT, ZMOD_RW,
+	"Try a ZSTD pass after LZ4 to determine whether we should early abort.");
+ZFS_MODULE_PARAM(zfs, zstd_, firstpass_mode, INT, ZMOD_RW,
+	"If trying zstd after LZ4, what config to try.");
+ZFS_MODULE_PARAM(zfs, zstd_, cutoff_level, INT, ZMOD_RW,
+	"If trying zstd after LZ4, what level to only try it above (e.g. a value of 3 means 4+ will have it tried)");
+ZFS_MODULE_PARAM(zfs, zstd_, abort_size, UINT, ZMOD_RW,
+	"Only >= this size should we try early abort at all");
+ZFS_MODULE_PARAM(zfs, zstd_, hard_moed, UINT, ZMOD_RW,
+	"Ignore the rules; 1 == all the compression passes on eligible blocks, >=2 all the compression passes always");
+//ZFS_MODULE_PARAM(zfs, zstd_, zstd_shift_size, UINT, ZMOD_RW,
+//	"How many bits to offset the d_len given to ZSTD-1");
+ZFS_MODULE_PARAM(zfs, zstd_, ea_division_mode, UINT, ZMOD_RW,
+	"Do we scale zstd_abort_size");
+ZFS_MODULE_PARAM(zfs, zstd_, ea_divisor, UINT, ZMOD_RW,
+	"How fast do we scale down the cutoff");
+ZFS_MODULE_PARAM(zfs, zstd_, ea_level_factor, UINT, ZMOD_RW,
+	"How often do we change increments");
+ZFS_MODULE_PARAM(zfs, zstd_, lz4_shift_size, UINT, ZMOD_RW,
+	"How many bits to offset the d_len given to LZ4");
+
 #endif
