@@ -135,20 +135,54 @@ $(MODULE)-objs += zrlock.o
 $(MODULE)-objs += zthr.o
 $(MODULE)-objs += zvol.o
 
-$(MODULE)-objs += zlib.cloudflare/deflate.o
-$(MODULE)-objs += zlib.cloudflare/inflate.o
-$(MODULE)-objs += zlib.cloudflare/inffast.o
-$(MODULE)-objs += zlib.cloudflare/inftrees.o
-$(MODULE)-objs += zlib.cloudflare/compress.o
-$(MODULE)-objs += zlib.cloudflare/crc32.o
-$(MODULE)-objs += zlib.cloudflare/adler32.o
-$(MODULE)-objs += zlib.cloudflare/trees.o
-$(MODULE)-objs += zlib.cloudflare/inffast_chunk.o
-#$(MODULE)-objs += zlib.cloudflare/cpu_features.o
-#$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/fill_window_sse.o
-$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/adler32_simd.o
-$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/crc32_simd.o
-#$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/crc_folding.o
+$(MODULE)-objs += zlib-ng/deflate.o
+$(MODULE)-objs += zlib-ng/compare256.o
+$(MODULE)-objs += zlib-ng/crc32_fold.o
+$(MODULE)-objs += zlib-ng/chunkset.o
+$(MODULE)-objs += zlib-ng/cpu_features.o
+$(MODULE)-objs += zlib-ng/deflate_quick.o
+$(MODULE)-objs += zlib-ng/deflate_medium.o
+$(MODULE)-objs += zlib-ng/deflate_stored.o
+$(MODULE)-objs += zlib-ng/deflate_fast.o
+$(MODULE)-objs += zlib-ng/deflate_slow.o
+$(MODULE)-objs += zlib-ng/deflate_rle.o
+$(MODULE)-objs += zlib-ng/deflate_huff.o
+$(MODULE)-objs += zlib-ng/functable.o
+$(MODULE)-objs += zlib-ng/inflate.o
+$(MODULE)-objs += zlib-ng/inffast.o
+$(MODULE)-objs += zlib-ng/inftrees.o
+$(MODULE)-objs += zlib-ng/insert_string.o
+$(MODULE)-objs += zlib-ng/slide_hash.o
+$(MODULE)-objs += zlib-ng/compress.o
+$(MODULE)-objs += zlib-ng/crc32.o
+$(MODULE)-objs += zlib-ng/adler32.o
+$(MODULE)-objs += zlib-ng/trees.o
+$(MODULE)-objs += zlib-ng/uncompr.o
+$(MODULE)-objs += zlib-ng/insert_string_roll.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/adler32_avx2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/adler32_avx512.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/adler32_avx512_vnni.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/adler32_sse41.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/adler32_ssse3.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/chunkset_avx.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/chunkset_sse2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/compare256_avx2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/compare256_sse2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/crc32_fold_pclmulqdq.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/crc32_fold_vpclmulqdq.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/insert_string_sse42.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/slide_hash_avx2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/slide_hash_sse2.o
+$(MODULE)-$(CONFIG_X86) += zlib-ng/arch/x86/x86_features.o
+
+#$(MODULE)-objs += zlib-ng/match32.o
+#$(MODULE)-$(CONFIG_X86) += zlib-ng/inffast_chunk.o
+#$(MODULE)-$(CONFIG_AARCH64) += zlib-ng/inffast_chunk.o
+#$(MODULE)-objs += zlib-ng/cpu_features.o
+#$(MODULE)-$(CONFIG_X86) += zlib-ng/fill_window_sse.o
+#$(MODULE)-$(CONFIG_X86) += zlib-ng/adler32_simd.o
+#$(MODULE)-$(CONFIG_X86) += zlib-ng/crc32_simd.o
+#$(MODULE)-$(CONFIG_X86) += zlib-ng/crc_folding.o
 
 # Suppress incorrect warnings from versions of objtool which are not
 # aware of x86 EVEX prefix instructions used for AVX512.
@@ -156,51 +190,138 @@ OBJECT_FILES_NON_STANDARD_vdev_raidz_math_avx512bw.o := y
 OBJECT_FILES_NON_STANDARD_vdev_raidz_math_avx512f.o := y
 
 EXCLUDEME := -mno-sse -mno-avx -mno-avx2 -mno-sse3 -mno-ssse3 -mgeneral-regs-only -mtune=generic -mno-mmx -mno-sse2 -mno-3dnow -mno-80387 $(EXCLUDEALL)
-INCLUDEME := -march=native -mtune=native -O3 -DCHROMIUM_ZLIB_NO_CHROMECONF
+INCLUDEME := -march=native -mtune=native -O3
+# zlib-ng fun
+ZLIBNG := -DNDEBUG -D_LARGEFILE64_SOURCE=1 -DHAVE_POSIX_MEMALIGN -DZLIB_COMPAT -DWITH_GZFILEOP -fno-semantic-interposition -DHAVE_VISIBILITY_HIDDEN -DHAVE_VISIBILITY_INTERNAL -DHAVE_BUILTIN_CTZ -DHAVE_BUILTIN_CTZLL -DUNALIGNED_OK -DUNALIGNED64_OK -DX86_FEATURES -DX86_AVX2 -DX86_AVX2_ADLER32 -DX86_AVX_CHUNKSET -DX86_SSE41_ADLER32 -DX86_SSE42_CRC_HASH -DX86_SSE42_CRC_INTRIN -DX86_SSE2 -DX86_SSE2_CHUNKSET -DX86_SSSE3 -DX86_SSSE3_ADLER32 -DX86_PCLMULQDQ_CRC
 ZLIBSTRIP := -DDEBUG -UNDEBUG
-ZLIBINC := -DINFLATE_CHUNK_SIMD_SSE2 -DHAS_SSE42 -DHAS_PCLMUL -DADLER32_SIMD_SSSE3 -DINFLATE_CHUNK_READ_64LE -ffreestanding
+#ZLIBVROOM := -DINFLATE_CHUNK_SIMD_SSE2 -DHAS_SSE42 -DHAS_PCLMUL -DADLER32_SIMD_SSSE3 -DINFLATE_CHUNK_READ_64LE -DDEFLATE_FILL_WINDOW_SSE2 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -mavx2 -ftree-vectorize
+ZLIBVROOM := $(ZLIBNG)
+ZLIBINC := $(ZLIBVROOM)
 
-CFLAGS_REMOVE_zlib.cloudflare/deflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/deflate.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/cpu_features.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/cpu_features.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/uncompr.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/uncompr.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/inflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/inflate.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/slide_hash.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/slide_hash.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/compress.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/compress.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/chunkset.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/chunkset.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/crc32.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/crc32.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/crc32_fold.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/crc32_fold.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/adler32.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/adler32.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/functable.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/functable.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC) -fno-jump-tables -funwind-tables
 
-CFLAGS_REMOVE_zlib.cloudflare/inffast.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/inffast.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/insert_string.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/insert_string.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/inffast_chunk.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/inffast_chunk.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/compare256.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/compare256.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/inftrees.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/inftrees.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_quick.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_quick.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/trees.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/trees.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_rle.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_rle.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/fill_window_sse.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/fill_window_sse.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_huff.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_huff.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/adler32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/adler32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_slow.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_slow.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/crc32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/crc32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_fast.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_fast.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
 
-CFLAGS_REMOVE_zlib.cloudflare/crc_folding.o += $(EXCLUDEME) $(ZLIBSTRIP)
-CFLAGS_zlib.cloudflare/crc_folding.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/deflate_medium.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_medium.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/deflate_stored.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_stored.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/cpu_features.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/cpu_features.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/deflate_quick.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/deflate_quick.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/insert_string_roll.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/insert_string_roll.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/cpu_features.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/cpu_features.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/inflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/inflate.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/compress.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/compress.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/crc32.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/crc32.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/adler32.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/adler32.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/inffast.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/inffast.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/inffast_chunk.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/inffast_chunk.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/inftrees.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/inftrees.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/trees.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/trees.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/fill_window_sse.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/fill_window_sse.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/adler32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/adler32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/crc32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/crc32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/crc_folding.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/crc_folding.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib-ng/arch/x86/adler32_avx2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/adler32_avx2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/adler32_avx512.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/adler32_avx512.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/adler32_avx512_vnni.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/adler32_avx512_vnni.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/adler32_sse41.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/adler32_sse41.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/adler32_ssse3.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/adler32_ssse3.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/chunkset_avx.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/chunkset_avx.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/chunkset_sse2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/chunkset_sse2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/compare256_avx2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/compare256_avx2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/compare256_sse2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/compare256_sse2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/crc32_fold_pclmulqdq.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/crc32_fold_pclmulqdq.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/crc32_fold_vpclmulqdq.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/crc32_fold_vpclmulqdq.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/insert_string_sse42.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/insert_string_sse42.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/slide_hash_avx2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/slide_hash_avx2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/slide_hash_sse2.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/slide_hash_sse2.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+CFLAGS_REMOVE_zlib-ng/arch/x86/x86_features.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib-ng/arch/x86/x86_features.o += $(INCLUDEME) -I$(mfdir)/zlib-ng/ $(ZLIBINC)
+
 
 $(MODULE)-$(CONFIG_X86) += vdev_raidz_math_sse2.o
 $(MODULE)-$(CONFIG_X86) += vdev_raidz_math_ssse3.o
