@@ -12,6 +12,7 @@ obj-$(CONFIG_ZFS) := $(MODULE).o
 
 # Suppress unused-value warnings in sparc64 architecture headers
 ccflags-$(CONFIG_SPARC64) += -Wno-unused-value
+ccflags-y += -Wno-error
 
 $(MODULE)-objs += abd.o
 $(MODULE)-objs += aggsum.o
@@ -53,7 +54,7 @@ $(MODULE)-objs += dsl_synctask.o
 $(MODULE)-objs += dsl_userhold.o
 $(MODULE)-objs += edonr_zfs.o
 $(MODULE)-objs += fm.o
-$(MODULE)-objs += gzip.o
+$(MODULE)-objs += gzip_simd.o
 $(MODULE)-objs += hkdf.o
 $(MODULE)-objs += lz4.o
 $(MODULE)-objs += lz4_zfs.o
@@ -134,10 +135,72 @@ $(MODULE)-objs += zrlock.o
 $(MODULE)-objs += zthr.o
 $(MODULE)-objs += zvol.o
 
+$(MODULE)-objs += zlib.cloudflare/deflate.o
+$(MODULE)-objs += zlib.cloudflare/inflate.o
+$(MODULE)-objs += zlib.cloudflare/inffast.o
+$(MODULE)-objs += zlib.cloudflare/inftrees.o
+$(MODULE)-objs += zlib.cloudflare/compress.o
+$(MODULE)-objs += zlib.cloudflare/crc32.o
+$(MODULE)-objs += zlib.cloudflare/adler32.o
+$(MODULE)-objs += zlib.cloudflare/trees.o
+$(MODULE)-objs += zlib.cloudflare/inffast_chunk.o
+#$(MODULE)-objs += zlib.cloudflare/cpu_features.o
+#$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/fill_window_sse.o
+$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/adler32_simd.o
+$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/crc32_simd.o
+#$(MODULE)-$(CONFIG_X86) += zlib.cloudflare/crc_folding.o
+
 # Suppress incorrect warnings from versions of objtool which are not
 # aware of x86 EVEX prefix instructions used for AVX512.
 OBJECT_FILES_NON_STANDARD_vdev_raidz_math_avx512bw.o := y
 OBJECT_FILES_NON_STANDARD_vdev_raidz_math_avx512f.o := y
+
+EXCLUDEME := -mno-sse -mno-avx -mno-avx2 -mno-sse3 -mno-ssse3 -mgeneral-regs-only -mtune=generic -mno-mmx -mno-sse2 -mno-3dnow -mno-80387 $(EXCLUDEALL)
+INCLUDEME := -march=native -mtune=native -O3 -DCHROMIUM_ZLIB_NO_CHROMECONF
+ZLIBSTRIP := -DDEBUG -UNDEBUG
+ZLIBINC := -DINFLATE_CHUNK_SIMD_SSE2 -DHAS_SSE42 -DHAS_PCLMUL -DADLER32_SIMD_SSSE3 -DINFLATE_CHUNK_READ_64LE -ffreestanding
+
+CFLAGS_REMOVE_zlib.cloudflare/deflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/deflate.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/cpu_features.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/cpu_features.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/inflate.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/inflate.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/compress.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/compress.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/crc32.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/crc32.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/adler32.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/adler32.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/inffast.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/inffast.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/inffast_chunk.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/inffast_chunk.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/inftrees.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/inftrees.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/trees.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/trees.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/fill_window_sse.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/fill_window_sse.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/adler32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/adler32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/crc32_simd.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/crc32_simd.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
+
+CFLAGS_REMOVE_zlib.cloudflare/crc_folding.o += $(EXCLUDEME) $(ZLIBSTRIP)
+CFLAGS_zlib.cloudflare/crc_folding.o += $(INCLUDEME) -I$(mfdir)/zlib.cloudflare/ $(ZLIBINC)
 
 $(MODULE)-$(CONFIG_X86) += vdev_raidz_math_sse2.o
 $(MODULE)-$(CONFIG_X86) += vdev_raidz_math_ssse3.o
@@ -156,3 +219,4 @@ $(obj)/vdev_raidz_math_powerpc_altivec.o: c_flags += -maltivec
 endif
 
 include $(mfdir)/../os/linux/zfs/Makefile
+
