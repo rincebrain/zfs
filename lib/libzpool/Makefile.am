@@ -173,6 +173,7 @@ KERNEL_C = \
 	zfs_znode.c \
 	zil.c \
 	zio.c \
+	zio_common.c \
 	zio_checksum.c \
 	zio_compress.c \
 	zio_crypt.c \

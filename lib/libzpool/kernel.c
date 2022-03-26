@@ -43,6 +43,7 @@
 #include <sys/zfs_context.h>
 #include <sys/zfs_onexit.h>
 #include <sys/zfs_vfsops.h>
+#include <sys/zio.h>
 #include <sys/zstd/zstd.h>
 #include <sys/zvol.h>
 #include <zfs_fletcher.h>
@@ -807,10 +808,13 @@ kernel_init(int mode)
 	(void) snprintf(hw_serial, sizeof (hw_serial), "%ld",
 	    (mode & SPA_MODE_WRITE) ? get_system_hostid() : 0);
 
+//	zfs_dbgmsg_init();
 	random_init();
 
 	VERIFY0(uname(&hw_utsname));
 
+	zio_data_init();
+//	dprintf("Did this work\n");
 	system_taskq_init();
 	icp_init();
 
@@ -835,6 +839,8 @@ kernel_fini(void)
 	system_taskq_fini();
 
 	random_fini();
+	zio_data_fini();
+//	zfs_dbgmsg_fini();
 }
 
 uid_t

@@ -74,13 +74,14 @@ static int zio_deadman_log_all = B_FALSE;
  * I/O kmem caches
  * ==========================================================================
  */
-static kmem_cache_t *zio_cache;
-static kmem_cache_t *zio_link_cache;
-kmem_cache_t *zio_buf_cache[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
-kmem_cache_t *zio_data_buf_cache[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
+
+extern kmem_cache_t *zio_cache;
+extern kmem_cache_t *zio_link_cache;
+extern kmem_cache_t *zio_buf_cache[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
+extern kmem_cache_t *zio_data_buf_cache[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
 #if defined(ZFS_DEBUG) && !defined(_KERNEL)
-static uint64_t zio_buf_cache_allocs[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
-static uint64_t zio_buf_cache_frees[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
+extern uint64_t zio_buf_cache_allocs[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
+extern uint64_t zio_buf_cache_frees[SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT];
 #endif
 
 /* Mark IOs as "slow" if they take longer than 30 seconds */
@@ -125,18 +126,7 @@ static int zfs_sync_pass_rewrite = 2; /* rewrite new bps s. i. t. p. */
  */
 #define	IO_IS_ALLOCATING(zio) ((zio)->io_orig_pipeline & ZIO_STAGE_DVA_ALLOCATE)
 
-/*
- * Enable smaller cores by excluding metadata
- * allocations as well.
- */
-int zio_exclude_metadata = 0;
 static int zio_requeue_io_start_cut_in_line = 1;
-
-#ifdef ZFS_DEBUG
-static const int zio_buf_debug_limit = 16384;
-#else
-static const int zio_buf_debug_limit = 0;
-#endif
 
 static inline void __zio_execute(zio_t *zio);
 
@@ -145,101 +135,7 @@ static void zio_taskq_dispatch(zio_t *, zio_taskq_type_t, boolean_t);
 void
 zio_init(void)
 {
-	size_t c;
-
-	zio_cache = kmem_cache_create("zio_cache",
-	    sizeof (zio_t), 0, NULL, NULL, NULL, NULL, NULL, 0);
-	zio_link_cache = kmem_cache_create("zio_link_cache",
-	    sizeof (zio_link_t), 0, NULL, NULL, NULL, NULL, NULL, 0);
-
-	/*
-	 * For small buffers, we want a cache for each multiple of
-	 * SPA_MINBLOCKSIZE.  For larger buffers, we want a cache
-	 * for each quarter-power of 2.
-	 */
-	for (c = 0; c < SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT; c++) {
-		size_t size = (c + 1) << SPA_MINBLOCKSHIFT;
-		size_t p2 = size;
-		size_t align = 0;
-		size_t data_cflags, cflags;
-
-		data_cflags = KMC_NODEBUG;
-		cflags = (zio_exclude_metadata || size > zio_buf_debug_limit) ?
-		    KMC_NODEBUG : 0;
-
-#if defined(_ILP32) && defined(_KERNEL)
-		/*
-		 * Cache size limited to 1M on 32-bit platforms until ARC
-		 * buffers no longer require virtual address space.
-		 */
-		if (size > zfs_max_recordsize)
-			break;
-#endif
-
-		while (!ISP2(p2))
-			p2 &= p2 - 1;
-
-#ifndef _KERNEL
-		/*
-		 * If we are using watchpoints, put each buffer on its own page,
-		 * to eliminate the performance overhead of trapping to the
-		 * kernel when modifying a non-watched buffer that shares the
-		 * page with a watched buffer.
-		 */
-		if (arc_watch && !IS_P2ALIGNED(size, PAGESIZE))
-			continue;
-		/*
-		 * Here's the problem - on 4K native devices in userland on
-		 * Linux using O_DIRECT, buffers must be 4K aligned or I/O
-		 * will fail with EINVAL, causing zdb (and others) to coredump.
-		 * Since userland probably doesn't need optimized buffer caches,
-		 * we just force 4K alignment on everything.
-		 */
-		align = 8 * SPA_MINBLOCKSIZE;
-#else
-		if (size < PAGESIZE) {
-			align = SPA_MINBLOCKSIZE;
-		} else if (IS_P2ALIGNED(size, p2 >> 2)) {
-			align = PAGESIZE;
-		}
-#endif
-
-		if (align != 0) {
-			char name[36];
-			if (cflags == data_cflags) {
-				/*
-				 * Resulting kmem caches would be identical.
-				 * Save memory by creating only one.
-				 */
-				(void) snprintf(name, sizeof (name),
-				    "zio_buf_comb_%lu", (ulong_t)size);
-				zio_buf_cache[c] = kmem_cache_create(name,
-				    size, align, NULL, NULL, NULL, NULL, NULL,
-				    cflags);
-				zio_data_buf_cache[c] = zio_buf_cache[c];
-				continue;
-			}
-			(void) snprintf(name, sizeof (name), "zio_buf_%lu",
-			    (ulong_t)size);
-			zio_buf_cache[c] = kmem_cache_create(name, size,
-			    align, NULL, NULL, NULL, NULL, NULL, cflags);
-
-			(void) snprintf(name, sizeof (name), "zio_data_buf_%lu",
-			    (ulong_t)size);
-			zio_data_buf_cache[c] = kmem_cache_create(name, size,
-			    align, NULL, NULL, NULL, NULL, NULL, data_cflags);
-		}
-	}
-
-	while (--c != 0) {
-		ASSERT(zio_buf_cache[c] != NULL);
-		if (zio_buf_cache[c - 1] == NULL)
-			zio_buf_cache[c - 1] = zio_buf_cache[c];
-
-		ASSERT(zio_data_buf_cache[c] != NULL);
-		if (zio_data_buf_cache[c - 1] == NULL)
-			zio_data_buf_cache[c - 1] = zio_data_buf_cache[c];
-	}
+	/* zio_data caches shoved into zcommon */
 
 	zio_inject_init();
 
@@ -249,54 +145,6 @@ zio_init(void)
 void
 zio_fini(void)
 {
-	size_t n = SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT;
-
-#if defined(ZFS_DEBUG) && !defined(_KERNEL)
-	for (size_t i = 0; i < n; i++) {
-		if (zio_buf_cache_allocs[i] != zio_buf_cache_frees[i])
-			(void) printf("zio_fini: [%d] %llu != %llu\n",
-			    (int)((i + 1) << SPA_MINBLOCKSHIFT),
-			    (long long unsigned)zio_buf_cache_allocs[i],
-			    (long long unsigned)zio_buf_cache_frees[i]);
-	}
-#endif
-
-	/*
-	 * The same kmem cache can show up multiple times in both zio_buf_cache
-	 * and zio_data_buf_cache. Do a wasteful but trivially correct scan to
-	 * sort it out.
-	 */
-	for (size_t i = 0; i < n; i++) {
-		kmem_cache_t *cache = zio_buf_cache[i];
-		if (cache == NULL)
-			continue;
-		for (size_t j = i; j < n; j++) {
-			if (cache == zio_buf_cache[j])
-				zio_buf_cache[j] = NULL;
-			if (cache == zio_data_buf_cache[j])
-				zio_data_buf_cache[j] = NULL;
-		}
-		kmem_cache_destroy(cache);
-	}
-
-	for (size_t i = 0; i < n; i++) {
-		kmem_cache_t *cache = zio_data_buf_cache[i];
-		if (cache == NULL)
-			continue;
-		for (size_t j = i; j < n; j++) {
-			if (cache == zio_data_buf_cache[j])
-				zio_data_buf_cache[j] = NULL;
-		}
-		kmem_cache_destroy(cache);
-	}
-
-	for (size_t i = 0; i < n; i++) {
-		VERIFY3P(zio_buf_cache[i], ==, NULL);
-		VERIFY3P(zio_data_buf_cache[i], ==, NULL);
-	}
-
-	kmem_cache_destroy(zio_link_cache);
-	kmem_cache_destroy(zio_cache);
 
 	zio_inject_fini();
 
@@ -309,63 +157,8 @@ zio_fini(void)
  * ==========================================================================
  */
 
-/*
- * Use zio_buf_alloc to allocate ZFS metadata.  This data will appear in a
- * crashdump if the kernel panics, so use it judiciously.  Obviously, it's
- * useful to inspect ZFS metadata, but if possible, we should avoid keeping
- * excess / transient data in-core during a crashdump.
- */
-void *
-zio_buf_alloc(size_t size)
-{
-	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
 
-	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
-#if defined(ZFS_DEBUG) && !defined(_KERNEL)
-	atomic_add_64(&zio_buf_cache_allocs[c], 1);
-#endif
-
-	return (kmem_cache_alloc(zio_buf_cache[c], KM_PUSHPAGE));
-}
-
-/*
- * Use zio_data_buf_alloc to allocate data.  The data will not appear in a
- * crashdump if the kernel panics.  This exists so that we will limit the amount
- * of ZFS data that shows up in a kernel crashdump.  (Thus reducing the amount
- * of kernel heap dumped to disk when the kernel panics)
- */
-void *
-zio_data_buf_alloc(size_t size)
-{
-	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
-
-	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
-
-	return (kmem_cache_alloc(zio_data_buf_cache[c], KM_PUSHPAGE));
-}
-
-void
-zio_buf_free(void *buf, size_t size)
-{
-	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
-
-	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
-#if defined(ZFS_DEBUG) && !defined(_KERNEL)
-	atomic_add_64(&zio_buf_cache_frees[c], 1);
-#endif
-
-	kmem_cache_free(zio_buf_cache[c], buf);
-}
-
-void
-zio_data_buf_free(void *buf, size_t size)
-{
-	size_t c = (size - 1) >> SPA_MINBLOCKSHIFT;
-
-	VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
-
-	kmem_cache_free(zio_data_buf_cache[c], buf);
-}
+/* these functions have been punted into zcommon */
 
 static void
 zio_abd_free(void *abd, size_t size)
@@ -5054,10 +4847,6 @@ zbookmark_subtree_completed(const dnode_phys_t *dnp,
 }
 
 EXPORT_SYMBOL(zio_type_name);
-EXPORT_SYMBOL(zio_buf_alloc);
-EXPORT_SYMBOL(zio_data_buf_alloc);
-EXPORT_SYMBOL(zio_buf_free);
-EXPORT_SYMBOL(zio_data_buf_free);
 
 ZFS_MODULE_PARAM(zfs_zio, zio_, slow_io_ms, INT, ZMOD_RW,
 	"Max I/O completion time (milliseconds) before marking it as slow");

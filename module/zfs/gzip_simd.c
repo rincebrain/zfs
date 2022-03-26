@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/strings.h>
 #include <sys/qat.h>
+#include <sys/spa.h>
 #include <sys/simd.h>
 #include <sys/zio_compress.h>
 
@@ -43,6 +44,13 @@ int x86_cpu_enable_ssse3 = 1;
 typedef uLongf zlen_t;
 #define	compress_func	compress2
 #define	uncompress_func	uncompress
+
+typedef struct gzip_info {
+	size_t nbytes;
+	int16_t fromcache;
+} gzip_info_t;
+
+extern kmem_cache_t	*zio_data_buf_cache[];
 
 z_const char * const z_errmsg[10] = {
     (z_const char *)"need dictionary",     /* Z_NEED_DICT       2  */
@@ -118,15 +126,41 @@ gzip_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 }
 
 void* z_zcalloc(void *opaque, int nitems, int sz) {
-	uint64_t retsz = (nitems * sz) + sizeof(uint64_t);
-	void *ret = vmem_zalloc(retsz, KM_SLEEP);
-	*((uint64_t *)ret) = retsz;
+	uint64_t nbytes = (nitems * sz) + sizeof(gzip_info_t);
+	gzip_info_t *ret = NULL;
+	if (nbytes <= SPA_MAXBLOCKSIZE) {
+		size_t c = (nbytes - 1) >> SPA_MINBLOCKSHIFT;
+
+		VERIFY3U(c, <, SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT);
+		ret = kmem_cache_alloc(zio_data_buf_cache[c], KM_PUSHPAGE);
+		if (ret) {
+			#if defined(ZFS_DEBUG) && !defined(_KERNEL)
+			// if we're using combined bufs, this should increment
+			// too...
+			if ((zio_buf_cache[c] == zio_data_buf_cache[c]))
+				atomic_add_64(&zio_buf_cache_allocs[c], 1);
+			#endif
+			ret->nbytes = nbytes;
+			ret->fromcache = c;
+		}
+	}
+	if (ret == NULL) {
+		ret = vmem_zalloc(nbytes, KM_SLEEP);
+		if (ret) {
+			ret->nbytes = nbytes;
+			ret->fromcache = -1;
+		}
+	}
+	if (ret == NULL)
+		return (NULL);
 //	zfs_dbgmsg("DBG zcalloc: %px %px %llu %d %d", ret, (((uint64_t *)ret)+sizeof(uint64_t)), (u_longlong_t) retsz, nitems, sz);
-	return (((uint64_t *)ret)+sizeof(uint64_t));
+	return (((uintptr_t)ret)+sizeof(gzip_info_t));
 }
 
 void z_zcfree(void *opaque, void *ptr) {
-	void *actualptr = ((uint64_t *)ptr)-sizeof(uint64_t);
-//	zfs_dbgmsg("DBG zcfree: %px %px %llu", actualptr, ptr, (u_longlong_t) *((uint64_t *)actualptr));
-	vmem_free(actualptr, *((uint64_t *)actualptr));
+	gzip_info_t *actual_ptr = (ptr - sizeof(gzip_info_t));
+	if (actual_ptr->fromcache != -1)
+		kmem_cache_free(zio_data_buf_cache[actual_ptr->fromcache], actual_ptr);
+	else
+		vmem_free(actual_ptr, actual_ptr->nbytes);
 }

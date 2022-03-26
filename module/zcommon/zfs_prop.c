@@ -1011,12 +1011,15 @@ zcommon_init(void)
 
 	fletcher_4_init();
 
+	zio_data_init();
+
 	return (0);
 }
 
 static void __exit
 zcommon_fini(void)
 {
+	zio_data_fini();
 	fletcher_4_fini();
 	kfpu_fini();
 }
