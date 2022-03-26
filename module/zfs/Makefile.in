@@ -191,6 +191,9 @@ OBJECT_FILES_NON_STANDARD_vdev_raidz_math_avx512f.o := y
 
 EXCLUDEME := -mno-sse -mno-avx -mno-avx2 -mno-sse3 -mno-ssse3 -mgeneral-regs-only -mtune=generic -mno-mmx -mno-sse2 -mno-3dnow -mno-80387 $(EXCLUDEALL)
 INCLUDEME := -march=native -mtune=native -O3
+# this might be redundant but two copies should be safer than none...
+# and 5.15 stopped including it in general, so no intrinsics for us otherwise.
+INCLUDEME += -isystem $(shell $(CC) -print-file-name=include)
 # zlib-ng fun
 ZLIBNG := -DNDEBUG -D_LARGEFILE64_SOURCE=1 -DHAVE_POSIX_MEMALIGN -DZLIB_COMPAT -DWITH_GZFILEOP -fno-semantic-interposition -DHAVE_VISIBILITY_HIDDEN -DHAVE_VISIBILITY_INTERNAL -DHAVE_BUILTIN_CTZ -DHAVE_BUILTIN_CTZLL -DUNALIGNED_OK -DUNALIGNED64_OK -DX86_FEATURES -DX86_AVX2 -DX86_AVX2_ADLER32 -DX86_AVX_CHUNKSET -DX86_SSE41_ADLER32 -DX86_SSE42_CRC_HASH -DX86_SSE42_CRC_INTRIN -DX86_SSE2 -DX86_SSE2_CHUNKSET -DX86_SSSE3 -DX86_SSSE3_ADLER32 -DX86_PCLMULQDQ_CRC
 ZLIBSTRIP := -DDEBUG -UNDEBUG
