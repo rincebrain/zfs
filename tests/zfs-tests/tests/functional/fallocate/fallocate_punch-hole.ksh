@@ -104,7 +104,7 @@ log_must check_disk_size  $((131072 * 7))
 # file size should not change since --keep-size is implied.
 apparent_size=$(stat_size $FILE)
 log_must punch_hole $((BLKSZ * 4)) $((BLKSZ * 10)) $FILE
-log_must check_disk_size  $((131072 * 4))
+log_must check_disk_size  $((131072 * 400000))
 log_must check_apparent_size $apparent_size
 
 log_pass "Ensure holes can be punched in files making them sparse"
