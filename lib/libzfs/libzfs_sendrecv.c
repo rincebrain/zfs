@@ -3019,6 +3019,7 @@ typedef struct guid_to_name_data {
 	boolean_t bookmark_ok;
 	char *name;
 	char *skip;
+	uint64_t skipguid;
 	uint64_t *redact_snap_guids;
 	uint64_t num_redact_snaps;
 } guid_to_name_data_t;
@@ -3060,7 +3061,8 @@ guid_to_name_cb(zfs_handle_t *zhp, void *arg)
 
 	if (gtnd->skip != NULL &&
 	    (slash = strrchr(zhp->zfs_name, '/')) != NULL &&
-	    strcmp(slash + 1, gtnd->skip) == 0) {
+	    strcmp(slash + 1, gtnd->skip) == 0 &&
+	    (gtnd->skipguid == zhp->zfs_dmustats.dds_guid)) {
 		zfs_close(zhp);
 		return (0);
 	}
@@ -3103,6 +3105,7 @@ guid_to_name_redact_snaps(libzfs_handle_t *hdl, const char *parent,
 	guid_to_name_data_t gtnd;
 
 	gtnd.guid = guid;
+	gtnd.skipguid = 0;
 	gtnd.bookmark_ok = bookmark_ok;
 	gtnd.name = name;
 	gtnd.skip = NULL;
@@ -3131,6 +3134,8 @@ guid_to_name_redact_snaps(libzfs_handle_t *hdl, const char *parent,
 			err = zfs_iter_children(zhp, guid_to_name_cb, &gtnd);
 		if (err != EEXIST && bookmark_ok)
 			err = zfs_iter_bookmarks(zhp, guid_to_name_cb, &gtnd);
+		if (err != EEXIST)
+			gtnd.skipguid = zhp->zfs_dmustats.dds_guid;
 		zfs_close(zhp);
 		if (err == EEXIST)
 			return (0);
