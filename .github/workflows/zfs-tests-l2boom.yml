@@ -62,7 +62,7 @@ jobs:
         set -o pipefail
         /usr/share/zfs/zfs-tests.sh -T compression -vKR -s 3G | scripts/zfs-tests-color.sh
       shell: bash
-      timeout-minutes: 330
+      timeout-minutes: 15
     - name: Prepare artifacts
       if: failure()
       run: |
