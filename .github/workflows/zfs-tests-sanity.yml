@@ -60,16 +60,15 @@ jobs:
       shell: bash
       timeout-minutes: 330
     - name: Prepare artifacts
-      if: failure()
       run: |
         RESULTS_PATH=$(readlink -f /var/tmp/test_results/current)
+        sudo cp ${{ github.workspace }}/config.log $RESULTS_PATH/
         sudo dmesg > $RESULTS_PATH/dmesg
         sudo cp /var/log/syslog /var/tmp/dmesg-prerun $RESULTS_PATH/
         sudo chmod +r $RESULTS_PATH/*
         # Replace ':' in dir names, actions/upload-artifact doesn't support it
         for f in $(find /var/tmp/test_results -name '*:*'); do mv "$f" "${f//:/__}"; done
     - uses: actions/upload-artifact@v2
-      if: failure()
       with:
         name: Test logs Ubuntu-${{ matrix.os }}
         path: |
