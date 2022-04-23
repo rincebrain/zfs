@@ -468,7 +468,7 @@ zfs_zstd_compress_wrap(void *s_start, void *d_start, size_t s_len, size_t d_len,
 		int pass_len = 1;
 		int lz4_len = d_len;
 		#ifdef _KERNEL
-		printk(KERN_NOTICE "Calling LZ4_compress with s_len %lu d_len %lu lz4_len %lu", s_len, d_len, lz4_len);
+		printk(KERN_NOTICE "Calling LZ4_compress with s_len %lu d_len %lu lz4_len %lu", s_len, d_len, (size_t)lz4_len);
 		#endif
 		pass_len = lz4_compress_zfs(s_start, d_start, s_len, lz4_len, 0);
 		if (pass_len < lz4_len && !zstd_hard_moed) {
