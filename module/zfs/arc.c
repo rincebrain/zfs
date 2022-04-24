@@ -9345,7 +9345,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, uint64_t asize,
 
 		if (psize >= asize) {
 			psize = HDR_GET_PSIZE(hdr);
-			abd_return_buf(cabd, tmp, size);
+			abd_return_buf_copy(cabd, tmp, size);
 			HDR_SET_COMPRESS(hdr, ZIO_COMPRESS_OFF);
 			to_write = cabd;
 			abd_copy(to_write, hdr->b_l1hdr.b_pabd, psize);
@@ -9357,7 +9357,7 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, uint64_t asize,
 		if (psize < asize)
 			memset((char *)tmp + psize, 0, asize - psize);
 		psize = HDR_GET_PSIZE(hdr);
-		abd_return_buf_copy(cabd, tmp, asize);
+		abd_return_buf_copy(cabd, tmp, size);
 		to_write = cabd;
 	}
 
