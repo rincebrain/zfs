@@ -9337,19 +9337,20 @@ l2arc_apply_transforms(spa_t *spa, arc_buf_hdr_t *hdr, uint64_t asize,
 	}
 
 	if (compress != ZIO_COMPRESS_OFF && !HDR_COMPRESSION_ENABLED(hdr)) {
-		cabd = abd_alloc_for_io(asize, ismd);
-		tmp = abd_borrow_buf(cabd, asize);
+		cabd = abd_alloc_for_io(size, ismd);
+		tmp = abd_borrow_buf(cabd, size);
 
 		psize = zio_compress_data(compress, to_write, tmp, size,
 		    hdr->b_complevel);
 
-		if (psize >= size) {
-			abd_return_buf(cabd, tmp, asize);
+		if (psize >= asize) {
+			psize = HDR_GET_PSIZE(hdr);
+			abd_return_buf(cabd, tmp, size);
 			HDR_SET_COMPRESS(hdr, ZIO_COMPRESS_OFF);
 			to_write = cabd;
-			abd_copy(to_write, hdr->b_l1hdr.b_pabd, size);
-			if (size != asize)
-				abd_zero_off(to_write, size, asize - size);
+			abd_copy(to_write, hdr->b_l1hdr.b_pabd, psize);
+			if (psize != asize)
+				abd_zero_off(to_write, psize, asize - psize);
 			goto encrypt;
 		}
 		ASSERT3U(psize, <=, HDR_GET_PSIZE(hdr));
