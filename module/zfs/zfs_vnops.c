@@ -1035,7 +1035,16 @@ zfs_verify_zp(znode_t *zp)
 	return (0);
 }
 
-#define	BRT_CHUNK_SIZE	(DMU_MAX_ACCESS / 2)
+/*
+ * We split each clone request into requests that clone at most BRT_NBLOCKS
+ * in a single transaction. This is mostly for the ZIL benefit.
+ * We can fit 130816 bytes into a single ZIL entry for clone operation
+ * (check zfs_log_clone() and zil_max_log_data()). This gives us room for
+ * storing 1022 block pointers. But let's keep ZIL entries a bit smaller
+ * and store 254 block pointers in each ZIL entry for now, which should
+ * give us ZIL entry of exactly 32kB.
+ */
+#define	BRT_NBLOCKS	(254)
 
 int
 zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
@@ -1055,6 +1064,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	uint64_t	uid, gid, projid;
 	blkptr_t	*bps;
 	size_t		nbps;
+	uint_t		srcblksz;
 	boolean_t	frsync = B_FALSE;
 	uint64_t	clear_setid_bits_txg = 0;
 
@@ -1168,8 +1178,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		    length, RL_READER);
 	}
 
-	if ((srcoffset % srczp->z_blksz) != 0 ||
-	    (dstoffset % srczp->z_blksz) != 0) {
+	srcblksz = srczp->z_blksz;
+
+	if ((srcoffset % srcblksz) != 0 || (dstoffset % srczp->z_blksz) != 0) {
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
@@ -1178,8 +1189,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	/*
 	 * length may not be multipe of blksz only at the end of the file.
 	 */
-	if ((length % srczp->z_blksz) != 0 &&
-	    length != srczp->z_size - srcoffset) {
+	if ((length % srcblksz) != 0 && length != srczp->z_size - srcoffset) {
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
@@ -1222,7 +1232,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 	 * and allows us to do more fine-grained space accounting.
 	 */
 	while (length > 0) {
-		size = MIN(BRT_CHUNK_SIZE, length);
+		size = MIN(srcblksz * BRT_NBLOCKS, length);
 
 		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
 		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
@@ -1280,7 +1290,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		 * lr_length to the appropriate size.
 		 */
 		if (dstlr->lr_length == UINT64_MAX) {
-			zfs_grow_blocksize(dstzp, srczp->z_blksz, tx);
+			zfs_grow_blocksize(dstzp, srcblksz, tx);
 			zfs_rangelock_reduce(dstlr, dstoffset, length);
 		}
 
@@ -1304,7 +1314,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
 		error = sa_bulk_update(dstzp->z_sa_hdl, bulk, count, tx);
 
 		zfs_log_clone(zilog, tx, TX_CLONE, dstzp, dstioflag, dstoffset,
-		    size, srczp->z_blksz, bps, nbps);
+		    size, srcblksz, bps, nbps);
 		dmu_tx_commit(tx);
 
 		kmem_free(bps, sizeof(bps[0]) * nbps);
