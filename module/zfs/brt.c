@@ -39,7 +39,7 @@
 #include <sys/dsl_scan.h>
 #include <sys/vdev_impl.h>
 
-#define	ZFS_BRT_DEBUG
+//#define	ZFS_BRT_DEBUG
 
 /*
  * BRT - Block Reference Table.
@@ -172,7 +172,11 @@ static kmem_cache_t *brt_pending_entry_cache;
  */
 int zfs_brt_prefetch = 0;
 
+#ifdef ZFS_BRT_DEBUG
 static int zfs_brt_debug = 1;
+#else
+static int zfs_brt_debug = 0;
+#endif
 #define	BRT_DEBUG(...)	do {						\
 	if (zfs_brt_debug) {						\
 		printf("%s:%u: ", __func__, __LINE__);			\
