@@ -1413,53 +1413,6 @@ brt_pending_remove(spa_t *spa, const blkptr_t *bp, dmu_tx_t *tx)
 	mutex_exit(pending_lock);
 }
 
-/* TODO: Move to ddt.c. */
-static boolean_t
-brt_add_to_ddt(spa_t *spa, const blkptr_t *bp)
-{
-	ddt_t *ddt;
-	ddt_entry_t *dde;
-	boolean_t result;
-
-	spa_config_enter(spa, SCL_ZIO, FTAG, RW_READER);
-	ddt = ddt_select(spa, bp);
-	ddt_enter(ddt);
-
-	dde = ddt_lookup(ddt, bp, B_TRUE);
-	ASSERT(dde != NULL);
-
-	if (dde->dde_type < DDT_TYPES) {
-		ddt_phys_t *ddp;
-
-		ASSERT3S(dde->dde_class, <, DDT_CLASSES);
-
-		ddp = &dde->dde_phys[BP_GET_NDVAS(bp)];
-		if (ddp->ddp_refcnt == 0) {
-			/* This should never happen? */
-			ddt_phys_fill(ddp, bp);
-		}
-		ddt_phys_addref(ddp);
-		result = B_TRUE;
-	} else {
-		/*
-		 * At the time of implementating this if the block has the
-		 * DEDUP flag set it must exist in the DEDUP table, but
-		 * there are many advocates that want ability to remove
-		 * entries from DDT with refcnt=1. If this will happen,
-		 * we may have a block with the DEDUP set, but which doesn't
-		 * have a corresponding entry in the DDT. Be ready.
-		 */
-		ASSERT3S(dde->dde_class, ==, DDT_CLASSES);
-		ddt_remove(ddt, dde);
-		result = B_FALSE;
-	}
-
-	ddt_exit(ddt);
-	spa_config_exit(spa, SCL_ZIO, FTAG);
-
-	return (result);
-}
-
 void
 brt_pending_apply(spa_t *spa, uint64_t txg)
 {
@@ -1492,8 +1445,7 @@ brt_pending_apply(spa_t *spa, uint64_t txg)
 			 * the BRT table.
 			 */
 			if (BP_GET_DEDUP(&bpe->bpe_bp)) {
-				added_to_ddt = brt_add_to_ddt(spa,
-				    &bpe->bpe_bp);
+				added_to_ddt = ddt_addref(spa, &bpe->bpe_bp);
 			} else {
 				added_to_ddt = B_FALSE;
 			}
