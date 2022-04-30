@@ -569,9 +569,9 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 		 */
 		ASSERT3U(brtvd->bv_size, <=, size);
 
-		bcopy(brtvd->bv_refcount, refcount,
+		memcpy(refcount, brtvd->bv_refcount, refcount,
 		    sizeof(uint64_t) * MIN(size, brtvd->bv_size));
-		bcopy(brtvd->bv_bitmap, bitmap,
+		memcpy(bitmap, brtvd->bv_bitmap,
 		    MIN(BT_SIZEOFMAP(nblocks), BT_SIZEOFMAP(brtvd->bv_nblocks)));
 		kmem_free(brtvd->bv_refcount,
 		    sizeof(uint64_t) * brtvd->bv_size);
@@ -719,7 +719,7 @@ brt_vdevs_expand(brt_t *brt, uint64_t nvdevs)
 	if (brt->brt_nvdevs > 0) {
 		ASSERT(brt->brt_vdevs != NULL);
 
-		bcopy(brt->brt_vdevs, vdevs,
+		memcpy(vdevs, brt->brt_vdevs,
 		    sizeof(brt_vdev_t) * brt->brt_nvdevs);
 		kmem_free(brt->brt_vdevs,
 		    sizeof(brt_vdev_t) * brt->brt_nvdevs);
