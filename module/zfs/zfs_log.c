@@ -855,7 +855,7 @@ zfs_log_clone(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
 		lr->lr_length = len;
 		lr->lr_blksz = blksz;
 		lr->lr_nbps = partnbps;
-		bcopy(bps, lr->lr_bps, sizeof(bps[0]) * partnbps);
+		memcpy(lr->lr_bps, bps, sizeof(bps[0]) * partnbps);
 
 		itx->itx_sync =
 		    ((ioflag & (O_SYNC | O_DSYNC)) != 0 || zp->z_sync_cnt != 0);
