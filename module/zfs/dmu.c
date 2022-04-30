@@ -2204,7 +2204,7 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 		 * Make sure we clone only data blocks.
 		 */
 		if (BP_IS_METADATA(bp)) {
-			error = SET_ERROR(EFTYPE);
+			error = SET_ERROR(EINVAL);
 			goto out;
 		}
 
