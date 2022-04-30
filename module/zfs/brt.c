@@ -569,7 +569,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 		 */
 		ASSERT3U(brtvd->bv_size, <=, size);
 
-		memcpy(refcount, brtvd->bv_refcount, refcount,
+		memcpy(refcount, brtvd->bv_refcount,
 		    sizeof(uint64_t) * MIN(size, brtvd->bv_size));
 		memcpy(bitmap, brtvd->bv_bitmap,
 		    MIN(BT_SIZEOFMAP(nblocks), BT_SIZEOFMAP(brtvd->bv_nblocks)));
@@ -861,7 +861,7 @@ brt_vdev_sync(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	bvphys->bvp_dsize = brtvd->bv_dsize;
 	dmu_buf_rele(db, FTAG);
 
-	bzero(brtvd->bv_bitmap, BT_SIZEOFMAP(brtvd->bv_nblocks));
+	memset(brtvd->bv_bitmap, 0, BT_SIZEOFMAP(brtvd->bv_nblocks));
 	brtvd->bv_dirty = FALSE;
 }
 
@@ -1127,7 +1127,7 @@ brt_entry_alloc(const brt_entry_t *bre_init)
 	brt_entry_t *bre;
 
 	bre = kmem_cache_alloc(brt_entry_cache, KM_SLEEP);
-	bzero(bre, sizeof (brt_entry_t));
+	memset(bre, 0, sizeof (brt_entry_t));
 
 	bre->bre_vdevid = bre_init->bre_vdevid;
 	bre->bre_offset = bre_init->bre_offset;
