@@ -302,6 +302,7 @@ zil_prt_rec_acl(zilog_t *zilog, int txtype, const void *arg)
 static void
 zil_prt_rec_clone(zilog_t *zilog, int txtype, const void *arg)
 {
+	(void) zilog, (void) txtype;
 	const lr_clone_t *lr = arg;
 	unsigned int i;
 
