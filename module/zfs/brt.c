@@ -235,7 +235,7 @@
  * We divide each VDEV into 1GB chunks. Each chunk is represented in memory
  * by a 64bit counter, thus 1TB VDEV requires 8kB of memory.
  */
-#define	BRT_RANGE_CHUNK	(1024 * 1024 * 1024)
+#define	BRT_RANGE_SIZE	(1024 * 1024 * 1024)
 /*
  * We don't want to update the whole structure every time. Maintain bitmap
  * of dirty blocks within the regions, so that a single bit represents a
@@ -251,6 +251,7 @@ typedef struct brt_vdev_phys {
 	uint64_t	bvp_mos_entries;
 	uint64_t	bvp_size;
 	uint64_t	bvp_totalcount;
+	uint64_t	bvp_rangesize;
 	uint64_t	bvp_drefsize;
 	uint64_t	bvp_dsize;
 } brt_vdev_phys_t;
@@ -282,7 +283,7 @@ typedef struct brt_vdev {
 	uint64_t	bv_size;
 	/*
 	 * This is the array with all the refcounts
-	 * (one refcount per BRT_RANGE_CHUNK).
+	 * (one refcount per BRT_RANGE_SIZE).
 	 */
 	uint64_t	*bv_refcount;
 	/*
@@ -320,6 +321,7 @@ typedef struct brt {
 	spa_t		*brt_spa;
 #define	brt_mos		brt_spa->spa_meta_objset
 	uint64_t	brt_blocksize;
+	uint64_t	brt_rangesize;
 	uint64_t	brt_drefsize;
 	uint64_t	brt_dsize;
 	avl_tree_t	brt_pending_tree[TXG_SIZE];
@@ -538,7 +540,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 
 	spa_config_enter(brt->brt_spa, SCL_VDEV, FTAG, RW_READER);
 	vd = vdev_lookup_top(brt->brt_spa, brtvd->bv_vdevid);
-	size = vdev_get_min_asize(vd) / BRT_RANGE_CHUNK + 1;
+	size = vdev_get_min_asize(vd) / brt->brt_rangesize + 1;
 	spa_config_exit(brt->brt_spa, SCL_VDEV, FTAG);
 
 	refcount = kmem_zalloc(sizeof(uint64_t) * size, KM_SLEEP);
@@ -630,6 +632,11 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_dsize = bvphys->bvp_dsize;
 	brt->brt_drefsize += brtvd->bv_drefsize;
 	brt->brt_dsize += brtvd->bv_dsize;
+	if (brt->brt_rangesize == 0) {
+		brt->brt_rangesize = bvphys->bvp_rangesize;
+	} else {
+		ASSERT3U(brt->brt_rangesize, ==, bvphys->bvp_rangesize);
+	}
 
 	dmu_buf_rele(db, FTAG);
 
@@ -744,7 +751,7 @@ brt_vdev_lookup(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre)
 		unlock = FALSE;
 	}
 
-	idx = bre->bre_offset / BRT_RANGE_CHUNK;
+	idx = bre->bre_offset / brt->brt_rangesize;
 	if (brtvd->bv_refcount != NULL && idx < brtvd->bv_size) {
 		/* VDEV wasn't expanded. */
 		found = brtvd->bv_refcount[idx] > 0;
@@ -768,7 +775,7 @@ brt_vdev_addref(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre,
 	ASSERT(brtvd != NULL);
 	ASSERT(brtvd->bv_refcount != NULL);
 
-	idx = bre->bre_offset / BRT_RANGE_CHUNK;
+	idx = bre->bre_offset / brt->brt_rangesize;
 	if (idx >= brtvd->bv_size) {
 		/* VDEV has been expanded. */
 		brt_vdev_realloc(brt, brtvd);
@@ -803,7 +810,7 @@ brt_vdev_decref(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre,
 	ASSERT(brtvd != NULL);
 	ASSERT(brtvd->bv_refcount != NULL);
 
-	idx = bre->bre_offset / BRT_RANGE_CHUNK;
+	idx = bre->bre_offset / brt->brt_rangesize;
 	ASSERT3U(idx, <, brtvd->bv_size);
 
 	ASSERT(brtvd->bv_totalcount > 0);
@@ -849,6 +856,7 @@ brt_vdev_sync(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	bvphys->bvp_mos_entries = brtvd->bv_mos_entries;
 	bvphys->bvp_size = brtvd->bv_size;
 	bvphys->bvp_totalcount = brtvd->bv_totalcount;
+	bvphys->bvp_rangesize = brt->brt_rangesize;
 	bvphys->bvp_drefsize = brtvd->bv_drefsize;
 	bvphys->bvp_dsize = brtvd->bv_dsize;
 	dmu_buf_rele(db, FTAG);
@@ -871,6 +879,9 @@ brt_vdevs_load(brt_t *brt)
 		ASSERT(brtvd->bv_refcount == NULL);
 
 		brt_vdev_load(brt, brtvd);
+	}
+	if (brt->brt_rangesize == 0) {
+		brt->brt_rangesize = BRT_RANGE_SIZE;
 	}
 
 	brt_exit(brt);
@@ -1592,6 +1603,7 @@ brt_create(spa_t *spa)
 	mutex_init(&brt->brt_lock, NULL, MUTEX_DEFAULT, NULL);
 	brt->brt_spa = spa;
 	brt->brt_blocksize = (1 << spa->spa_min_ashift);
+	brt->brt_rangesize = 0;
 	brt->brt_nentries = 0;
 	brt->brt_vdevs = NULL;
 	brt->brt_nvdevs = 0;
