@@ -1166,6 +1166,20 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		zil_commit(srczfsvfs->z_log, srczp->z_id);
 	}
 
+	/*
+	 * No overlapping if we are cloning within the same file.
+	 */
+	if (srczp == dstzp) {
+		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
+		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
+			zfs_exit_two(srczfsvfs, dstzfsvfs);
+			return (SET_ERROR(EINVAL));
+		}
+	}
+
+	/*
+	 * Maintain predictable lock order.
+	 */
 	if (srczp < dstzp) {
 		srclr = zfs_rangelock_enter(&srczp->z_rangelock, srcoffset,
 		    length, RL_READER);
@@ -1180,6 +1194,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 
 	srcblksz = srczp->z_blksz;
 
+	/*
+	 * Offsets and length must be at block boundries.
+	 */
 	if ((srcoffset % srcblksz) != 0 || (dstoffset % srczp->z_blksz) != 0) {
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
@@ -1187,7 +1204,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		return (SET_ERROR(EINVAL));
 	}
 	/*
-	 * length may not be multipe of blksz only at the end of the file.
+	 * Length may not be multipe of blksz only at the end of the file.
 	 */
 	if ((length % srcblksz) != 0 && length != srczp->z_size - srcoffset) {
 		zfs_rangelock_exit(srclr);

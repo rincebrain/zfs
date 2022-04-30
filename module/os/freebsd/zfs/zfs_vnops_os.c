@@ -6565,21 +6565,6 @@ kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset,
 		return (error);
 	}
 
-	/*
-	 * TODO: Make sure offsets and length are at block boundaries.
-	 */
-
-	if (cbl.srcvp == cbl.dstvp) {
-		/*
-		 * No overlapping if we are cloning within the same file.
-		 */
-		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
-		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
-			clonefile_unlock(&cbl, td);
-			return (EINVAL);
-		}
-	}
-
 	error = zfs_clone_range(VTOZ(cbl.srcvp), srcoffset, length,
 	    ioflags(cbl.srcioflag), VTOZ(cbl.dstvp), dstoffset,
 	    ioflags(cbl.dstioflag), td->td_ucred, &done);
