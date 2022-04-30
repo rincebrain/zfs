@@ -605,15 +605,21 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 		return;
 	ASSERT(brtvd->bv_mos_brtvdev != 0);
 
-	ASSERT(!brtvd->bv_initiated);
-	brt_vdev_realloc(brt, brtvd);
-
 	error = dmu_bonus_hold(brt->brt_mos, brtvd->bv_mos_brtvdev, FTAG, &db);
 	ASSERT0(error);
 	if (error != 0)
 		return;
 
 	bvphys = db->db_data;
+	if (brt->brt_rangesize == 0) {
+		brt->brt_rangesize = bvphys->bvp_rangesize;
+	} else {
+		ASSERT3U(brt->brt_rangesize, ==, bvphys->bvp_rangesize);
+	}
+
+	ASSERT(!brtvd->bv_initiated);
+	brt_vdev_realloc(brt, brtvd);
+
 	/* TODO: We don't support VDEV shrinking. */
 	ASSERT3U(bvphys->bvp_size, <=, brtvd->bv_size);
 
@@ -632,11 +638,6 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_dsize = bvphys->bvp_dsize;
 	brt->brt_drefsize += brtvd->bv_drefsize;
 	brt->brt_dsize += brtvd->bv_dsize;
-	if (brt->brt_rangesize == 0) {
-		brt->brt_rangesize = bvphys->bvp_rangesize;
-	} else {
-		ASSERT3U(brt->brt_rangesize, ==, bvphys->bvp_rangesize);
-	}
 
 	dmu_buf_rele(db, FTAG);
 
