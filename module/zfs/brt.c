@@ -42,11 +42,13 @@
 /*
  * Block Cloning design.
  *
- * Block Cloning allows to keep track of data blocks that are pointed at by
- * more than one block pointer. This functionality allows to clone a file
- * (or a subset of its blocks) into another file by just creating additional
- * references to the data blocks without copying the data itself. In many ways
- * this is similar to deduplication, but there are some important differences:
+ * Block Cloning allow to clone a file (or a subset of its blocks) into another
+ * (or the same) file by just creating additional references to the data blocks
+ * without copying the data itself. Those references are kept in the Block
+ * Reference Tables (BRTs).
+ *
+ * In many ways this is similar to deduplication, but there are some important
+ * differences:
  *
  * - Deduplication is automatic and Block Cloning is not - one has to use a
  *   dedicated system call(s) to clone the given file/blocks.
