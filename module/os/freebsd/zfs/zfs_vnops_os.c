@@ -6539,8 +6539,8 @@ out:
 }
 
 static int
-kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset, int dstfd,
-    uint64_t dstoffset, uint64_t length, ssize_t *donep)
+kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset,
+    uint64_t length, int dstfd, uint64_t dstoffset, ssize_t *donep)
 {
 	struct clonefile_lock cbl;
 	ssize_t done;
@@ -6580,9 +6580,9 @@ kern_fclonerange(struct thread *td, int srcfd, uint64_t srcoffset, int dstfd,
 		}
 	}
 
-	error = zfs_clone_range(VTOZ(cbl.srcvp), srcoffset,
+	error = zfs_clone_range(VTOZ(cbl.srcvp), srcoffset, length,
 	    ioflags(cbl.srcioflag), VTOZ(cbl.dstvp), dstoffset,
-	    ioflags(cbl.dstioflag), length, td->td_ucred, &done);
+	    ioflags(cbl.dstioflag), td->td_ucred, &done);
 
 	clonefile_unlock(&cbl, td);
 
@@ -6608,8 +6608,8 @@ sys_fclonefile(struct thread *td, void *arg)
 
 	args = arg;
 
-	error = kern_fclonerange(td, (int)args->srcfd, 0ULL, (int)args->dstfd,
-	    0ULL, UINT64_MAX, &done);
+	error = kern_fclonerange(td, (int)args->srcfd, 0ULL, UINT64_MAX,
+	    (int)args->dstfd, 0ULL, &done);
 
 	td->td_retval[0] = done;
 
@@ -6632,9 +6632,9 @@ static int fclonefile_num = NO_SYSCALL;
 struct fclonerange_args {
 	int64_t	srcfd;
 	uint64_t srcoffset;
+	uint64_t length;
 	int64_t	dstfd;
 	uint64_t dstoffset;
-	uint64_t length;
 };
 
 /*
@@ -6650,7 +6650,7 @@ sys_fclonerange(struct thread *td, void *arg)
 	args = arg;
 
 	error = kern_fclonerange(td, (int)args->srcfd, args->srcoffset,
-	    (int)args->dstfd, args->dstoffset, args->length, &done);
+	    args->length, (int)args->dstfd, args->dstoffset, &done);
 
 	td->td_retval[0] = done;
 

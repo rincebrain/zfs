@@ -1047,8 +1047,8 @@ zfs_verify_zp(znode_t *zp)
 #define	BRT_NBLOCKS	(254)
 
 int
-zfs_clone_range(znode_t *srczp, uint64_t srcoffset, int srcioflag,
-    znode_t *dstzp, uint64_t dstoffset, int dstioflag, uint64_t length,
+zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
+    int srcioflag, znode_t *dstzp, uint64_t dstoffset, int dstioflag,
     cred_t *cr, ssize_t *donep)
 {
 	zfsvfs_t	*srczfsvfs, *dstzfsvfs;
