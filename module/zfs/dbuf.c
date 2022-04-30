@@ -2521,6 +2521,10 @@ dbuf_undirty(dmu_buf_impl_t *db, dmu_tx_t *tx)
 
 	brtwrite = dr->dt.dl.dr_brtwrite;
 	if (brtwrite) {
+		/*
+		 * We are freeing a block that we cloned in the same
+		 * transaction group.
+		 */
 		brt_pending_remove(dmu_objset_spa(db->db_objset),
 		    &dr->dt.dl.dr_overridden_by, tx);
 	}

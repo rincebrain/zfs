@@ -2180,11 +2180,19 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 				 */
 				bp = &dr->dt.dl.dr_overridden_by;
 			} else {
+				/*
+				 * The block we want to clone was modified in
+				 * the same transaction group.
+				 */
 				error = SET_ERROR(EAGAIN);
 				goto out;
 			}
 		}
 		if (bp == NULL) {
+			/*
+			 * The block was created in this transaction group,
+			 * so it is too early to clone it.
+			 */
 			error = SET_ERROR(EAGAIN);
 			goto out;
 		}
