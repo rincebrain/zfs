@@ -359,9 +359,6 @@ int zfs_brt_prefetch = 0;
 
 #ifdef ZFS_BRT_DEBUG
 static int zfs_brt_debug = 1;
-#else
-static int zfs_brt_debug = 0;
-#endif
 #define	BRT_DEBUG(...)	do {						\
 	if (zfs_brt_debug) {						\
 		printf("%s:%u: ", __func__, __LINE__);			\
@@ -369,6 +366,10 @@ static int zfs_brt_debug = 0;
 		printf("\n");						\
 	}								\
 } while (0)
+#else
+static int zfs_brt_debug = 0;
+#define	BRT_DEBUG(...)	do { } while (0)
+#endif
 
 int brt_zap_leaf_blockshift = 12;
 int brt_zap_indirect_blockshift = 12;
