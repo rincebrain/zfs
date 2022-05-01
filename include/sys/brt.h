@@ -19,9 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2016 by Delphix. All rights reserved.
- * Copyright (c) 2020, Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
+ * Copyright (c) 2020, 2021, 2022 by Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
  */
 
 #ifndef _SYS_BRT_H
