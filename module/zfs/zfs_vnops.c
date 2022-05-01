@@ -1288,7 +1288,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		if (BP_IS_PROTECTED(&bps[0])) {
 			if (srczfsvfs != dstzfsvfs) {
 				dmu_tx_abort(tx);
-				kmem_free(bps, sizeof(bps[0]) * nbps);
+				kmem_free(bps, sizeof (bps[0]) * nbps);
 				error = SET_ERROR(ENODEV);
 				break;
 			}
@@ -1303,7 +1303,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		error = dmu_tx_assign(tx, TXG_WAIT);
 		if (error != 0) {
 			dmu_tx_abort(tx);
-			kmem_free(bps, sizeof(bps[0]) * nbps);
+			kmem_free(bps, sizeof (bps[0]) * nbps);
 			break;
 		}
 
@@ -1340,7 +1340,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		    size, srcblksz, bps, nbps);
 		dmu_tx_commit(tx);
 
-		kmem_free(bps, sizeof(bps[0]) * nbps);
+		kmem_free(bps, sizeof (bps[0]) * nbps);
 
 		if (error != 0)
 			break;

@@ -240,10 +240,10 @@
  * block size of refcounts. For example if we have a 64TB vdev then all
  * refcounts take 512kB of memory. If the block size is 4kB then we want to
  * have 128 separate dirty bits. Each bit will represent change in one
- * of 512 refcounts (4kB / sizeof(uint64_t)).
+ * of 512 refcounts (4kB / sizeof (uint64_t)).
  */
 #define	BRT_RANGE_SIZE_TO_NBLOCKS(size, blocksize)			\
-	(((size) - 1) / (blocksize) / sizeof(uint64_t) + 1)
+	(((size) - 1) / (blocksize) / sizeof (uint64_t) + 1)
 
 typedef struct brt_vdev_phys {
 	uint64_t	bvp_mos_entries;
@@ -515,7 +515,7 @@ brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	ASSERT(brtvd->bv_mos_brtvdev != 0);
 	BRT_DEBUG("MOS BRT VDEV created, object=%lu", brtvd->bv_mos_brtvdev);
 
-	snprintf(name, sizeof(name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	VERIFY0(zap_add(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev, tx));
@@ -539,7 +539,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 	size = vdev_get_min_asize(vd) / brt->brt_rangesize + 1;
 	spa_config_exit(brt->brt_spa, SCL_VDEV, FTAG);
 
-	refcount = kmem_zalloc(sizeof(uint64_t) * size, KM_SLEEP);
+	refcount = kmem_zalloc(sizeof (uint64_t) * size, KM_SLEEP);
 	nblocks = BRT_RANGE_SIZE_TO_NBLOCKS(size, brt->brt_blocksize);
 	bitmap = kmem_zalloc(BT_SIZEOFMAP(nblocks), KM_SLEEP);
 
@@ -549,7 +549,8 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 		ASSERT(brtvd->bv_bitmap == NULL);
 		ASSERT0(brtvd->bv_nblocks);
 
-		brtvd->bv_tree = kmem_zalloc(sizeof(*brtvd->bv_tree), KM_SLEEP);
+		brtvd->bv_tree = kmem_zalloc(sizeof (*brtvd->bv_tree),
+		    KM_SLEEP);
 		avl_create(brtvd->bv_tree, brt_entry_compare,
 		    sizeof (brt_entry_t), offsetof(brt_entry_t, bre_node));
 	} else {
@@ -561,16 +562,17 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 		/*
 		 * TODO: Allow vdev shrinking. We only need to implement
 		 * shrinking the on-disk BRT VDEV object.
-		 * dmu_free_range(brt->brt_mos, brtvd->bv_mos_brtvdev, offset, size, tx);
+		 * dmu_free_range(brt->brt_mos, brtvd->bv_mos_brtvdev, offset,
+		 *     size, tx);
 		 */
 		ASSERT3U(brtvd->bv_size, <=, size);
 
 		memcpy(refcount, brtvd->bv_refcount,
-		    sizeof(uint64_t) * MIN(size, brtvd->bv_size));
-		memcpy(bitmap, brtvd->bv_bitmap,
-		    MIN(BT_SIZEOFMAP(nblocks), BT_SIZEOFMAP(brtvd->bv_nblocks)));
+		    sizeof (uint64_t) * MIN(size, brtvd->bv_size));
+		memcpy(bitmap, brtvd->bv_bitmap, MIN(BT_SIZEOFMAP(nblocks),
+		    BT_SIZEOFMAP(brtvd->bv_nblocks)));
 		kmem_free(brtvd->bv_refcount,
-		    sizeof(uint64_t) * brtvd->bv_size);
+		    sizeof (uint64_t) * brtvd->bv_size);
 		kmem_free(brtvd->bv_bitmap, BT_SIZEOFMAP(brtvd->bv_nblocks));
 	}
 
@@ -592,7 +594,7 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 	brt_vdev_phys_t *bvphys;
 	int error;
 
-	snprintf(name, sizeof(name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	error = zap_lookup(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev);
@@ -654,7 +656,7 @@ brt_vdev_dealloc(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_bitmap = NULL;
 	ASSERT0(avl_numnodes(brtvd->bv_tree));
 	avl_destroy(brtvd->bv_tree);
-	kmem_free(brtvd->bv_tree, sizeof(*brtvd->bv_tree));
+	kmem_free(brtvd->bv_tree, sizeof (*brtvd->bv_tree));
 	brtvd->bv_tree = NULL;
 
 	brtvd->bv_size = 0;
@@ -693,7 +695,7 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	BRT_DEBUG("MOS BRT VDEV destroyed, object=%lu", brtvd->bv_mos_brtvdev);
 	brtvd->bv_mos_brtvdev = 0;
 
-	snprintf(name, sizeof(name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	VERIFY0(zap_remove(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name, tx));
 	BRT_DEBUG("Pool directory object removed, object=%s", name);
@@ -712,14 +714,14 @@ brt_vdevs_expand(brt_t *brt, uint64_t nvdevs)
 	ASSERT(MUTEX_HELD(&brt->brt_lock));
 	ASSERT3U(nvdevs, >, brt->brt_nvdevs);
 
-	vdevs = kmem_zalloc(sizeof(vdevs[0]) * nvdevs, KM_SLEEP);
+	vdevs = kmem_zalloc(sizeof (vdevs[0]) * nvdevs, KM_SLEEP);
 	if (brt->brt_nvdevs > 0) {
 		ASSERT(brt->brt_vdevs != NULL);
 
 		memcpy(vdevs, brt->brt_vdevs,
-		    sizeof(brt_vdev_t) * brt->brt_nvdevs);
+		    sizeof (brt_vdev_t) * brt->brt_nvdevs);
 		kmem_free(brt->brt_vdevs,
-		    sizeof(brt_vdev_t) * brt->brt_nvdevs);
+		    sizeof (brt_vdev_t) * brt->brt_nvdevs);
 	}
 	for (vdevid = brt->brt_nvdevs; vdevid < nvdevs; vdevid++) {
 		brtvd = &vdevs[vdevid];
@@ -955,14 +957,14 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, &one, &physsize);
 	if (error == 0) {
 		ASSERT3U(one, ==, 1);
-		ASSERT3U(physsize, ==, sizeof(bre->bre_refcount));
+		ASSERT3U(physsize, ==, sizeof (bre->bre_refcount));
 
 		error = zap_lookup_uint64(brt->brt_mos, mos_entries,
 		    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
-		    sizeof(bre->bre_refcount), &bre->bre_refcount);
-		BRT_DEBUG("ZAP lookup: object=%lu vdev=%lu offset=%lu count=%lu error=%d",
-		    mos_entries, bre->bre_vdevid, bre->bre_offset,
-		    error == 0 ? bre->bre_refcount : 0, error);
+		    sizeof (bre->bre_refcount), &bre->bre_refcount);
+		BRT_DEBUG("ZAP lookup: object=%lu vdev=%lu offset=%lu "
+		    "count=%lu error=%d", mos_entries, bre->bre_vdevid,
+		    bre->bre_offset, error == 0 ? bre->bre_refcount : 0, error);
 	}
 
 	brt_enter(brt);
@@ -1002,7 +1004,7 @@ brt_entry_update(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 
 	error = zap_update_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
-	    sizeof(bre->bre_refcount), &bre->bre_refcount, tx);
+	    sizeof (bre->bre_refcount), &bre->bre_refcount, tx);
 	BRT_DEBUG("ZAP update: object=%lu vdev=%lu offset=%lu count=%lu error=%d",
 	    brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
 	    bre->bre_refcount, error);
@@ -1596,7 +1598,7 @@ brt_create(spa_t *spa)
 
 	ASSERT(spa->spa_brt == NULL);
 
-	brt = kmem_zalloc(sizeof(*brt), KM_SLEEP);
+	brt = kmem_zalloc(sizeof (*brt), KM_SLEEP);
 	mutex_init(&brt->brt_lock, NULL, MUTEX_DEFAULT, NULL);
 	brt->brt_spa = spa;
 	brt->brt_blocksize = (1 << spa->spa_min_ashift);
@@ -1630,7 +1632,7 @@ brt_unload(spa_t *spa)
 	brt_vdevs_free(brt);
 	brt_table_free(brt);
 	mutex_destroy(&brt->brt_lock);
-	kmem_free(brt, sizeof(*brt));
+	kmem_free(brt, sizeof (*brt));
 	spa->spa_brt = NULL;
 }
 

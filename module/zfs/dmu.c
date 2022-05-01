@@ -2158,7 +2158,7 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 		return (error);
 	}
 
-	bps = kmem_alloc(sizeof(blkptr_t) * numbufs, KM_SLEEP);
+	bps = kmem_alloc(sizeof (blkptr_t) * numbufs, KM_SLEEP);
 
 	for (ii = 0; ii < numbufs; ii++) {
 		dbuf = dbp[ii];
@@ -2217,7 +2217,7 @@ dmu_brt_readbps(objset_t *os, uint64_t object, uint64_t offset, uint64_t length,
 out:
 	dmu_buf_rele_array(dbp, numbufs, FTAG);
 	if (error != 0) {
-		kmem_free(bps, sizeof(blkptr_t) * numbufs);
+		kmem_free(bps, sizeof (blkptr_t) * numbufs);
 	}
 
 	return (error);

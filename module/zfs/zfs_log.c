@@ -841,7 +841,7 @@ zfs_log_clone(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
 	max_log_data = zil_max_log_data(zilog, sizeof (lr_clone_t));
 
 	do {
-		partnbps = MIN(nbps, max_log_data / sizeof(bps[0]));
+		partnbps = MIN(nbps, max_log_data / sizeof (bps[0]));
 		len = 0;
 		for (i = 0; i < partnbps; i++) {
 			len += BP_GET_LSIZE(&bps[i]);
@@ -849,14 +849,14 @@ zfs_log_clone(zilog_t *zilog, dmu_tx_t *tx, int txtype, znode_t *zp,
 		len = MIN(len, length);
 
 		itx = zil_itx_create(txtype,
-		    sizeof (*lr) + sizeof(bps[0]) * partnbps);
+		    sizeof (*lr) + sizeof (bps[0]) * partnbps);
 		lr = (lr_clone_t *)&itx->itx_lr;
 		lr->lr_foid = zp->z_id;
 		lr->lr_offset = offset;
 		lr->lr_length = len;
 		lr->lr_blksz = blksz;
 		lr->lr_nbps = partnbps;
-		memcpy(lr->lr_bps, bps, sizeof(bps[0]) * partnbps);
+		memcpy(lr->lr_bps, bps, sizeof (bps[0]) * partnbps);
 
 		itx->itx_sync =
 		    ((ioflag & (O_SYNC | O_DSYNC)) != 0 || zp->z_sync_cnt != 0);
