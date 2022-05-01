@@ -26,6 +26,7 @@
  * Copyright (c) 2014 Spectra Logic Corporation, All rights reserved.
  * Copyright (c) 2019, Klara Inc.
  * Copyright (c) 2019, Allan Jude
+ * Copyright (c) 2021, 2022 by Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
  */
 
 #include <sys/zfs_context.h>

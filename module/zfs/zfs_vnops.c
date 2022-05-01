@@ -24,6 +24,7 @@
  * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2015 by Chunwei Chen. All rights reserved.
  * Copyright 2017 Nexenta Systems, Inc.
+ * Copyright (c) 2021, 2022 by Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
  */
 
 /* Portions Copyright 2007 Jeremy Teo */

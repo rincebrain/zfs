@@ -28,6 +28,7 @@
  * Copyright (c) 2019 Datto Inc.
  * Copyright (c) 2019, Klara Inc.
  * Copyright (c) 2019, Allan Jude
+ * Copyright (c) 2021, 2022 by Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
  */
 
 #include <sys/dmu.h>
