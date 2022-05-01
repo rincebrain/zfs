@@ -1150,6 +1150,11 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		return (SET_ERROR(EPERM));
 	}
 
+	/*
+	 * XXX: There should be no need to sync the source file, as we return
+	 *      an error if somebody is trying to clone a block that was
+	 *      modified in the same transaction group.
+	 */
 #ifdef FRSYNC
 	/*
 	 * If we're in FRSYNC mode, sync out this znode before reading it.
@@ -1358,7 +1363,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		return (error);
 	}
 
-	if (dstioflag & (FSYNC | FDSYNC) ||
+	if (dstioflag & (O_SYNC | O_DSYNC) ||
 	    dstzfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS) {
 		zil_commit(zilog, dstzp->z_id);
 	}
