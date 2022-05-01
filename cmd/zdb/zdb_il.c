@@ -298,7 +298,6 @@ zil_prt_rec_acl(zilog_t *zilog, int txtype, const void *arg)
 	    (u_longlong_t)lr->lr_foid, (u_longlong_t)lr->lr_aclcnt);
 }
 
-/* ARGSUSED */
 static void
 zil_prt_rec_clone(zilog_t *zilog, int txtype, const void *arg)
 {
