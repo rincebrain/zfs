@@ -1786,9 +1786,8 @@ dbuf_read(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
 
 		db_lock_type_t dblt = dmu_buf_lock_parent(db, RW_READER, FTAG);
 
-		if (zio == NULL &&
-		    (db->db_state == DB_NOFILL ||
-		     (db->db_blkptr != NULL && !BP_IS_HOLE(db->db_blkptr)))) {
+		if (zio == NULL && (db->db_state == DB_NOFILL ||
+		    (db->db_blkptr != NULL && !BP_IS_HOLE(db->db_blkptr)))) {
 			zio = zio_root(spa, NULL, NULL, ZIO_FLAG_CANFAIL);
 			need_wait = B_TRUE;
 		}

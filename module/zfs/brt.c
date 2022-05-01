@@ -222,8 +222,6 @@
  * each chunk clones at most 254 blocks, which makes ZIL entry to be 32kB.
  */
 
-//#define	ZFS_BRT_DEBUG
-
 /*
  * BRT - Block Reference Table.
  */

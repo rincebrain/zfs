@@ -3060,7 +3060,8 @@ zio_brt_free(zio_t *zio)
 
 	if (!brt_entry_decref(zio->io_spa, bp)) {
 		/*
-		 * This isn't the last reference, so we cannot free the data yet.
+		 * This isn't the last reference, so we cannot free
+		 * the data yet.
 		 */
 		zio->io_pipeline = ZIO_INTERLOCK_PIPELINE;
 	}

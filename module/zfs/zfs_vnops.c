@@ -1176,8 +1176,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	 * No overlapping if we are cloning within the same file.
 	 */
 	if (srczp == dstzp) {
-		if ((srcoffset >= dstoffset && srcoffset < dstoffset + length) ||
-		    (dstoffset >= srcoffset && dstoffset < srcoffset + length)) {
+		if ((srcoffset >= dstoffset &&
+		     srcoffset < dstoffset + length) ||
+		    (dstoffset >= srcoffset &&
+		     dstoffset < srcoffset + length)) {
 			zfs_exit_two(srczfsvfs, dstzfsvfs);
 			return (SET_ERROR(EINVAL));
 		}
@@ -1257,8 +1259,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	while (length > 0) {
 		size = MIN(srcblksz * BRT_NBLOCKS, length);
 
-		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT, uid) ||
-		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT, gid) ||
+		if (zfs_id_overblockquota(dstzfsvfs, DMU_USERUSED_OBJECT,
+		    uid) ||
+		    zfs_id_overblockquota(dstzfsvfs, DMU_GROUPUSED_OBJECT,
+		    gid) ||
 		    (projid != ZFS_DEFAULT_PROJID &&
 		    zfs_id_overblockquota(dstzfsvfs, DMU_PROJECTUSED_OBJECT,
 		    projid))) {
@@ -1370,7 +1374,8 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	}
 
 	/*
-	 * TODO: We don't log access time update to ZIL of the source file system.
+	 * TODO: We don't log access time update to ZIL of the source
+	 *       file system.
 	 */
 	ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
 	zfs_exit_two(srczfsvfs, dstzfsvfs);
