@@ -22,7 +22,7 @@
 /*
  * Copyright (c) 2009, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
- * Copyright (c) 2022 by Pawel Jakub Dawidek. All rights reserved.
+ * Copyright (c) 2022 by Pawel Jakub Dawidek
  */
 
 #include <sys/zfs_context.h>

@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright (c) 2020, 2021, 2022 by Pawel Jakub Dawidek. All rights reserved.
+ * Copyright (c) 2020, 2021, 2022 by Pawel Jakub Dawidek
  */
 
 #include <sys/zfs_context.h>
