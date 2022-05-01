@@ -365,7 +365,6 @@ static int zfs_brt_debug = 1;
 	}								\
 } while (0)
 #else
-static int zfs_brt_debug = 0;
 #define	BRT_DEBUG(...)	do { } while (0)
 #endif
 
@@ -1638,5 +1637,7 @@ brt_unload(spa_t *spa)
 /* BEGIN CSTYLED */
 ZFS_MODULE_PARAM(zfs_brt, zfs_brt_, prefetch, INT, ZMOD_RW,
     "Enable prefetching of BRT entries");
+#ifdef ZFS_BRT_DEBUG
 ZFS_MODULE_PARAM(zfs_brt, zfs_brt_, debug, INT, ZMOD_RW, "BRT debug");
+#endif
 /* END CSTYLED */
