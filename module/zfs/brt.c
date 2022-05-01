@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright (c) 2020, 2021, 2022 by Pawel Jakub Dawidek <pawel@dawidek.net>. All rights reserved.
+ * Copyright (c) 2020, 2021, 2022 by Pawel Jakub Dawidek. All rights reserved.
  */
 
 #include <sys/zfs_context.h>
@@ -442,7 +442,8 @@ brt_vdev_dump(brt_t *brt)
 		uint64_t idx;
 
 		brtvd = &brt->brt_vdevs[vdevid];
-		printf("  vdevid=%lu/%lu dirty=%d size=%lu totalcount=%lu nblocks=%lu bitmapsize=%lu\n",
+		printf("  vdevid=%lu/%lu dirty=%d size=%lu totalcount=%lu "
+		    "nblocks=%lu bitmapsize=%lu\n",
 		    vdevid, brtvd->bv_vdevid, brtvd->bv_dirty, brtvd->bv_size,
 		    brtvd->bv_totalcount, brtvd->bv_nblocks,
 		    BT_SIZEOFMAP(brtvd->bv_nblocks));
@@ -1005,8 +1006,8 @@ brt_entry_update(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 	error = zap_update_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
 	    sizeof (bre->bre_refcount), &bre->bre_refcount, tx);
-	BRT_DEBUG("ZAP update: object=%lu vdev=%lu offset=%lu count=%lu error=%d",
-	    brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
+	BRT_DEBUG("ZAP update: object=%lu vdev=%lu offset=%lu count=%lu "
+	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
 	    bre->bre_refcount, error);
 
 	return (error);
@@ -1023,8 +1024,8 @@ brt_entry_remove(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 
 	error = zap_remove_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, tx);
-	BRT_DEBUG("ZAP remove: object=%lu vdev=%lu offset=%lu count=%lu error=%d",
-	    brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
+	BRT_DEBUG("ZAP remove: object=%lu vdev=%lu offset=%lu count=%lu "
+	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
 	    bre->bre_refcount, error);
 
 	return (error);
