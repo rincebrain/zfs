@@ -1177,9 +1177,9 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	 */
 	if (srczp == dstzp) {
 		if ((srcoffset >= dstoffset &&
-		     srcoffset < dstoffset + length) ||
+		    srcoffset < dstoffset + length) ||
 		    (dstoffset >= srcoffset &&
-		     dstoffset < srcoffset + length)) {
+		    dstoffset < srcoffset + length)) {
 			zfs_exit_two(srczfsvfs, dstzfsvfs);
 			return (SET_ERROR(EINVAL));
 		}
