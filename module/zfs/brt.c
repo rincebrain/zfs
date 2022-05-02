@@ -514,7 +514,7 @@ brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	BRT_DEBUG("MOS BRT VDEV created, object=%llu", brtvd->bv_mos_brtvdev);
 
 	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
-	    brtvd->bv_vdevid);
+	    (u_longlong_t)brtvd->bv_vdevid);
 	VERIFY0(zap_add(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev, tx));
 	BRT_DEBUG("Pool directory object created, object=%s", name);
@@ -593,7 +593,7 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 	int error;
 
 	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
-	    brtvd->bv_vdevid);
+	    (u_longlong_t)brtvd->bv_vdevid);
 	error = zap_lookup(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev);
 	ASSERT(error == 0 || error == ENOENT);
@@ -694,7 +694,7 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	brtvd->bv_mos_brtvdev = 0;
 
 	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
-	    brtvd->bv_vdevid);
+	    (u_longlong_t)brtvd->bv_vdevid);
 	VERIFY0(zap_remove(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name, tx));
 	BRT_DEBUG("Pool directory object removed, object=%s", name);
 
