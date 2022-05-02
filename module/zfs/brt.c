@@ -439,16 +439,16 @@ brt_vdev_dump(brt_t *brt)
 		uint64_t idx;
 
 		brtvd = &brt->brt_vdevs[vdevid];
-		printf("  vdevid=%lu/%lu dirty=%d size=%lu totalcount=%lu "
-		    "nblocks=%lu bitmapsize=%lu\n",
+		printf("  vdevid=%llu/%llu dirty=%d size=%llu totalcount=%llu "
+		    "nblocks=%llu bitmapsize=%zu\n",
 		    vdevid, brtvd->bv_vdevid, brtvd->bv_dirty, brtvd->bv_size,
 		    brtvd->bv_totalcount, brtvd->bv_nblocks,
-		    BT_SIZEOFMAP(brtvd->bv_nblocks));
+		    (size_t)BT_SIZEOFMAP(brtvd->bv_nblocks));
 		if (brtvd->bv_totalcount > 0) {
 			printf("    refcounts:\n");
 			for (idx = 0; idx < brtvd->bv_size; idx++) {
 				if (brtvd->bv_refcount[idx] > 0) {
-					printf("      [%04lu] %lu\n",
+					printf("      [%04llu] %llu\n",
 					    idx, brtvd->bv_refcount[idx]);
 				}
 			}
@@ -500,7 +500,7 @@ brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	    brt_zap_leaf_blockshift, brt_zap_indirect_blockshift, DMU_OT_NONE,
 	    0, tx);
 	ASSERT(brtvd->bv_mos_entries != 0);
-	BRT_DEBUG("MOS entries created, object=%lu", brtvd->bv_mos_entries);
+	BRT_DEBUG("MOS entries created, object=%llu", brtvd->bv_mos_entries);
 
 	/*
 	 * We allocate DMU buffer to store the bv_refcount[] array.
@@ -511,9 +511,9 @@ brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	    DMU_OTN_UINT64_METADATA, brt->brt_blocksize,
 	    DMU_OTN_UINT64_METADATA, sizeof (brt_vdev_phys_t), tx);
 	ASSERT(brtvd->bv_mos_brtvdev != 0);
-	BRT_DEBUG("MOS BRT VDEV created, object=%lu", brtvd->bv_mos_brtvdev);
+	BRT_DEBUG("MOS BRT VDEV created, object=%llu", brtvd->bv_mos_brtvdev);
 
-	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	VERIFY0(zap_add(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev, tx));
@@ -580,7 +580,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_nblocks = nblocks;
 	if (!brtvd->bv_initiated) {
 		brtvd->bv_initiated = TRUE;
-		BRT_DEBUG("BRT VDEV %lu initiated.", brtvd->bv_vdevid);
+		BRT_DEBUG("BRT VDEV %llu initiated.", brtvd->bv_vdevid);
 	}
 }
 
@@ -592,7 +592,7 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 	brt_vdev_phys_t *bvphys;
 	int error;
 
-	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	error = zap_lookup(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name,
 	    sizeof (uint64_t), 1, &brtvd->bv_mos_brtvdev);
@@ -637,7 +637,7 @@ brt_vdev_load(brt_t *brt, brt_vdev_t *brtvd)
 
 	dmu_buf_rele(db, FTAG);
 
-	BRT_DEBUG("MOS BRT VDEV %s loaded: mos_brtvdev=%lu, mos_entries=%lu",
+	BRT_DEBUG("MOS BRT VDEV %s loaded: mos_brtvdev=%llu, mos_entries=%llu",
 	    name, brtvd->bv_mos_brtvdev, brtvd->bv_mos_entries);
 }
 
@@ -661,7 +661,7 @@ brt_vdev_dealloc(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_nblocks = 0;
 
 	brtvd->bv_initiated = FALSE;
-	BRT_DEBUG("BRT VDEV %lu deallocated.", brtvd->bv_vdevid);
+	BRT_DEBUG("BRT VDEV %llu deallocated.", brtvd->bv_vdevid);
 }
 
 static void
@@ -679,7 +679,7 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	VERIFY0(zap_count(brt->brt_mos, brtvd->bv_mos_entries, &count));
 	VERIFY0(count);
 	VERIFY0(zap_destroy(brt->brt_mos, brtvd->bv_mos_entries, tx));
-	BRT_DEBUG("MOS entries destroyed, object=%lu", brtvd->bv_mos_entries);
+	BRT_DEBUG("MOS entries destroyed, object=%llu", brtvd->bv_mos_entries);
 	brtvd->bv_mos_entries = 0;
 
 	VERIFY0(dmu_bonus_hold(brt->brt_mos, brtvd->bv_mos_brtvdev, FTAG, &db));
@@ -690,10 +690,10 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	dmu_buf_rele(db, FTAG);
 
 	VERIFY0(dmu_object_free(brt->brt_mos, brtvd->bv_mos_brtvdev, tx));
-	BRT_DEBUG("MOS BRT VDEV destroyed, object=%lu", brtvd->bv_mos_brtvdev);
+	BRT_DEBUG("MOS BRT VDEV destroyed, object=%llu", brtvd->bv_mos_brtvdev);
 	brtvd->bv_mos_brtvdev = 0;
 
-	snprintf(name, sizeof (name), "%s%lu", BRT_OBJECT_VDEV_PREFIX,
+	snprintf(name, sizeof (name), "%s%llu", BRT_OBJECT_VDEV_PREFIX,
 	    brtvd->bv_vdevid);
 	VERIFY0(zap_remove(brt->brt_mos, DMU_POOL_DIRECTORY_OBJECT, name, tx));
 	BRT_DEBUG("Pool directory object removed, object=%s", name);
@@ -728,7 +728,7 @@ brt_vdevs_expand(brt_t *brt, uint64_t nvdevs)
 		brtvd->bv_initiated = FALSE;
 	}
 
-	BRT_DEBUG("BRT VDEVs expanded from %lu to %lu.", brt->brt_nvdevs,
+	BRT_DEBUG("BRT VDEVs expanded from %llu to %llu.", brt->brt_nvdevs,
 	    nvdevs);
 
 	brt->brt_vdevs = vdevs;
@@ -960,8 +960,8 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 		error = zap_lookup_uint64(brt->brt_mos, mos_entries,
 		    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
 		    sizeof (bre->bre_refcount), &bre->bre_refcount);
-		BRT_DEBUG("ZAP lookup: object=%lu vdev=%lu offset=%lu "
-		    "count=%lu error=%d", mos_entries, bre->bre_vdevid,
+		BRT_DEBUG("ZAP lookup: object=%llu vdev=%llu offset=%llu "
+		    "count=%llu error=%d", mos_entries, bre->bre_vdevid,
 		    bre->bre_offset, error == 0 ? bre->bre_refcount : 0, error);
 	}
 
@@ -985,7 +985,7 @@ brt_entry_prefetch(brt_t *brt, brt_entry_t *bre)
 	if (mos_entries == 0)
 		return;
 
-	BRT_DEBUG("ZAP prefetch: object=%lu vdev=%lu offset=%lu",
+	BRT_DEBUG("ZAP prefetch: object=%llu vdev=%llu offset=%llu",
 	    mos_entries, bre->bre_vdevid, bre->bre_offset);
 	(void) zap_prefetch_uint64(brt->brt_mos, mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS);
@@ -1003,7 +1003,7 @@ brt_entry_update(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 	error = zap_update_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
 	    sizeof (bre->bre_refcount), &bre->bre_refcount, tx);
-	BRT_DEBUG("ZAP update: object=%lu vdev=%lu offset=%lu count=%lu "
+	BRT_DEBUG("ZAP update: object=%llu vdev=%llu offset=%llu count=%llu "
 	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
 	    bre->bre_refcount, error);
 
@@ -1021,7 +1021,7 @@ brt_entry_remove(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 
 	error = zap_remove_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, tx);
-	BRT_DEBUG("ZAP remove: object=%lu vdev=%lu offset=%lu count=%lu "
+	BRT_DEBUG("ZAP remove: object=%llu vdev=%llu offset=%llu count=%llu "
 	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
 	    bre->bre_refcount, error);
 
