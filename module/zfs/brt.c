@@ -200,6 +200,8 @@
  *   (see dbuf_undirty()).
  * - A block may be cloned and within the same transaction group the clone
  *   can be cloned again (see dmu_brt_readbps()).
+ * - A file might have been deleted, but the caller still has a file descriptor
+ *   open to this file and clones it.
  *
  * When we free a block we have additional step in the ZIO pipeline where we
  * call the zio_brt_free() function. We then call the brt_entry_decref()
