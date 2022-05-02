@@ -13,6 +13,7 @@ COMMON_H = \
 	bplist.h \
 	bpobj.h \
 	bptree.h \
+	brt.h \
 	btree.h \
 	bqueue.h \
 	dataset_kstats.h \
