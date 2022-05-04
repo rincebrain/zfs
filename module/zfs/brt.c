@@ -78,7 +78,7 @@
  *   times in the DDT. Unfortunately it is not currently (if at all) possible
  *   with Block Cloning and block referenced multiple times will be scrubbed
  *   multiple times.
- * - Deduplication requires cryptographocally strong hash as a checksum or
+ * - Deduplication requires cryptographically strong hash as a checksum or
  *   additional data verification. Block Cloning works with any checksum
  *   algorithm or even with checksumming disabled.
  *
@@ -93,7 +93,7 @@
  * Minimizing free penalty.
  *
  * Block Cloning allows to clone any existing block. When we free a block there
- * is no hint in the block pointer wether the block was cloned or not, so on
+ * is no hint in the block pointer whether the block was cloned or not, so on
  * each free we have to check if there is a corresponding entry in the BRT or
  * not. If there is, we need to decrease the reference counter. Doing BRT
  * lookup on every free can potentially be expensive by requiring additional
@@ -161,7 +161,7 @@
  * Block Cloning flow through ZFS layers.
  *
  * Note: Block Cloning can be used both for cloning file system blocks and ZVOL
- * blocks. As of this writting no interface is implemented that allows for ZVOL
+ * blocks. As of this writing no interface is implemented that allows for ZVOL
  * blocks cloning.
  * Depending on the operating system there might be different interfaces to
  * clone blocks. On FreeBSD we have two syscalls:
@@ -177,7 +177,7 @@
  * we first read block pointers using the new dmu_brt_readbps() function from
  * the source file. Once we have BPs from the source file we call the
  * dmu_brt_addref() function on the destination file. This function allocates
- * BPs for us. We interate over all source BPs. If the given BP is a hole or
+ * BPs for us. We iterate over all source BPs. If the given BP is a hole or
  * an embedded block, we just copy BP. If it points to a real data we place
  * this BP on a BRT pending list using the brt_pending_add() function.
  *
@@ -208,9 +208,9 @@
  * that loads the corresponding BRT entry (if one exists) and decreases
  * reference counter. If this is not the last reference we will stop ZIO
  * pipeline here. If this is the last reference or the block is not in the
- * BRT, we countinue the pipeline and free the block as usual.
+ * BRT, we continue the pipeline and free the block as usual.
  *
- * At the begining of spa_sync() where there can be no more block cloning,
+ * At the beginning of spa_sync() where there can be no more block cloning,
  * but before issuing frees we call brt_pending_apply(). This function applies
  * all the new clones to the BRT table - we load BRT entries and update
  * reference counters. To sync new BRT entries to disk, we use brt_sync()
