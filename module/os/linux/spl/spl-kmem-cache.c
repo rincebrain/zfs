@@ -584,20 +584,20 @@ spl_magazine_size(spl_kmem_cache_t *skc)
  * Allocate a per-cpu magazine to associate with a specific core.
  */
 static spl_kmem_magazine_t *
-spl_magazine_alloc(spl_kmem_cache_t *skc, int cpu)
+spl_magazine_alloc(spl_kmem_cache_t *skc, int node)
 {
 	spl_kmem_magazine_t *skm;
 	int size = sizeof (spl_kmem_magazine_t) +
 	    sizeof (void *) * skc->skc_mag_size;
 
-	skm = kmalloc_node(size, GFP_KERNEL, cpu_to_node(cpu));
+	skm = kmalloc_node(size, GFP_KERNEL, node);
 	if (skm) {
 		skm->skm_magic = SKM_MAGIC;
 		skm->skm_avail = 0;
 		skm->skm_size = skc->skc_mag_size;
 		skm->skm_refill = skc->skc_mag_refill;
 		skm->skm_cache = skc;
-		skm->skm_cpu = cpu;
+		skm->skm_cpu = node;
 	}
 
 	return (skm);
@@ -622,6 +622,8 @@ spl_magazine_create(spl_kmem_cache_t *skc)
 {
 	int i = 0;
 
+	int numamax = -1;
+
 	ASSERT((skc->skc_flags & KMC_SLAB) == 0);
 
 	skc->skc_mag = kzalloc(sizeof (spl_kmem_magazine_t *) *
@@ -630,10 +632,16 @@ spl_magazine_create(spl_kmem_cache_t *skc)
 	skc->skc_mag_refill = (skc->skc_mag_size + 1) / 2;
 
 	for_each_possible_cpu(i) {
-		skc->skc_mag[i] = spl_magazine_alloc(skc, i);
-		if (!skc->skc_mag[i]) {
-			for (i--; i >= 0; i--)
-				spl_magazine_free(skc->skc_mag[i]);
+		int numanode = cpu_to_node(i);
+		if (numanode <= numamax)
+			continue;
+		numamax = numanode;
+		skc->skc_mag[numanode] = spl_magazine_alloc(skc, numanode);
+		if (!skc->skc_mag[numanode]) {
+			int curnuma = numanode;
+			for (curnuma--; curnuma >= 0; i--) {
+				spl_magazine_free(skc->skc_mag[curnuma]);
+			}
 
 			kfree(skc->skc_mag);
 			return (-ENOMEM);
@@ -644,7 +652,7 @@ spl_magazine_create(spl_kmem_cache_t *skc)
 }
 
 /*
- * Destroy all pre-cpu magazines.
+ * Destroy all per-node magazines.
  */
 static void
 spl_magazine_destroy(spl_kmem_cache_t *skc)
@@ -654,8 +662,14 @@ spl_magazine_destroy(spl_kmem_cache_t *skc)
 
 	ASSERT((skc->skc_flags & KMC_SLAB) == 0);
 
+	int lastnode = -1;
+
 	for_each_possible_cpu(i) {
-		skm = skc->skc_mag[i];
+		int curnode = cpu_to_node(i);
+		if (curnode <= lastnode)
+			continue;
+		lastnode = curnode;
+		skm = skc->skc_mag[curnode];
 		spl_cache_flush(skc, skm, skm->skm_avail);
 		spl_magazine_free(skm);
 	}
@@ -1130,7 +1144,7 @@ spl_cache_refill(spl_kmem_cache_t *skc, spl_kmem_magazine_t *skm, int flags)
 				goto out;
 
 			/* Rescheduled to different CPU skm is not local */
-			if (skm != skc->skc_mag[smp_processor_id()])
+			if (skm != skc->skc_mag[cpu_to_node(smp_processor_id())])
 				goto out;
 
 			/*
@@ -1264,7 +1278,7 @@ restart:
 	 * the local magazine since this may have changed
 	 * when we need to grow the cache.
 	 */
-	skm = skc->skc_mag[smp_processor_id()];
+	skm = skc->skc_mag[cpu_to_node(smp_processor_id())];
 	ASSERT(skm->skm_magic == SKM_MAGIC);
 
 	if (likely(skm->skm_avail)) {
@@ -1351,7 +1365,7 @@ spl_kmem_cache_free(spl_kmem_cache_t *skc, void *obj)
 	 * it is entirely possible to allocate an object from one
 	 * CPU cache and return it to another.
 	 */
-	skm = skc->skc_mag[smp_processor_id()];
+	skm = skc->skc_mag[cpu_to_node(smp_processor_id())];
 	ASSERT(skm->skm_magic == SKM_MAGIC);
 
 	/*
@@ -1401,7 +1415,7 @@ spl_kmem_cache_reap_now(spl_kmem_cache_t *skc)
 	/* Reclaim from the magazine and free all now empty slabs. */
 	unsigned long irq_flags;
 	local_irq_save(irq_flags);
-	spl_kmem_magazine_t *skm = skc->skc_mag[smp_processor_id()];
+	spl_kmem_magazine_t *skm = skc->skc_mag[cpu_to_node(smp_processor_id())];
 	spl_cache_flush(skc, skm, skm->skm_avail);
 	local_irq_restore(irq_flags);
 
