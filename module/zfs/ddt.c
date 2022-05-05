@@ -1013,12 +1013,12 @@ ddt_sync_entry(ddt_t *ddt, ddt_entry_t *dde, dmu_tx_t *tx, uint64_t txg)
 	uint64_t total_refcnt = 0;
 
 	ASSERT(dde->dde_loaded);
-	ASSERT(!dde->dde_loading);
+	ASSERT0(dde->dde_loading);
 
 	for (int p = 0; p < DDT_PHYS_TYPES; p++, ddp++) {
-		ASSERT(dde->dde_lead_zio[p] == NULL);
+		ASSERT0(dde->dde_lead_zio[p]);
 		if (ddp->ddp_phys_birth == 0) {
-			ASSERT(ddp->ddp_refcnt == 0);
+			ASSERT0(ddp->ddp_refcnt);
 			continue;
 		}
 		if (p == DDT_PHYS_DITTO) {
@@ -1043,8 +1043,9 @@ ddt_sync_entry(ddt_t *ddt, ddt_entry_t *dde, dmu_tx_t *tx, uint64_t txg)
 
 	if (otype != DDT_TYPES &&
 	    (otype != ntype || oclass != nclass || total_refcnt == 0)) {
-		VERIFY(ddt_object_remove(ddt, otype, oclass, dde, tx) == 0);
-		ASSERT(ddt_object_lookup(ddt, otype, oclass, dde) == ENOENT);
+		VERIFY0(ddt_object_remove(ddt, otype, oclass, dde, tx));
+		ASSERT3U(ddt_object_lookup(ddt, otype, oclass, dde), ==,
+		    ENOENT);
 	}
 
 	if (total_refcnt != 0) {
@@ -1053,7 +1054,7 @@ ddt_sync_entry(ddt_t *ddt, ddt_entry_t *dde, dmu_tx_t *tx, uint64_t txg)
 		ddt_stat_update(ddt, dde, 0);
 		if (!ddt_object_exists(ddt, ntype, nclass))
 			ddt_object_create(ddt, ntype, nclass, tx);
-		VERIFY(ddt_object_update(ddt, ntype, nclass, dde, tx) == 0);
+		VERIFY0(ddt_object_update(ddt, ntype, nclass, dde, tx));
 
 		/*
 		 * If the class changes, the order that we scan this bp
