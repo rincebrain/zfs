@@ -7,7 +7,8 @@ COMMON_H = \
 	zfs_deleg.h \
 	zfs_fletcher.h \
 	zfs_namecheck.h \
-	zfs_prop.h
+	zfs_prop.h \
+	deprecated_funcs.h
 
 USER_H = \
 	libnvpair.h \

@@ -130,6 +130,7 @@ cstyle:
 		! -path './include/sys/lua/*' \
 		! -path './module/lua/l*.[ch]' \
 		! -path './module/zfs/lz4.c' \
+		! -path './include/deprecated_funcs.h' \
 		$(cstyle_line)
 
 filter_executable = -exec test -x '{}' \; -print
