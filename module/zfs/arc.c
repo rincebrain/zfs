@@ -1450,8 +1450,9 @@ arc_cksum_verify(arc_buf_t *buf)
 	}
 
 	fletcher_2_native(buf->b_data, arc_buf_size(buf), NULL, &zc);
-	if (!ZIO_CHECKSUM_EQUAL(*hdr->b_l1hdr.b_freeze_cksum, zc))
+	if (!ZIO_CHECKSUM_EQUAL(*hdr->b_l1hdr.b_freeze_cksum, zc)) {
 		panic("buffer modified while frozen!");
+	}
 	mutex_exit(&hdr->b_l1hdr.b_freeze_lock);
 }
 
@@ -1961,14 +1962,58 @@ static void
 arc_buf_untransform_in_place(arc_buf_t *buf)
 {
 	arc_buf_hdr_t *hdr = buf->b_hdr;
+	abd_t *sidebuf = NULL;
+	boolean_t rehash = B_FALSE;
 
 	ASSERT(HDR_ENCRYPTED(hdr));
 	ASSERT3U(hdr->b_crypt_hdr.b_ot, ==, DMU_OT_DNODE);
 	ASSERT(HDR_EMPTY_OR_LOCKED(hdr));
-	ASSERT3P(hdr->b_l1hdr.b_pabd, !=, NULL);
 
-	zio_crypt_copy_dnode_bonus(hdr->b_l1hdr.b_pabd, buf->b_data,
+	void* srcbuf = hdr->b_l1hdr.b_pabd;
+	/*
+	 * It's possible for us to end up here with everything but
+	 * buf->b_data being NULL. So we try using the buffers present, but
+	 * if we find none, we allocate an abd for temporary use (not tied to
+	 * the hdr because it's possible for another caller to be mid-arc_write
+	 * with it, so allocating an abd into it would trip some assertions),
+	 * copy the encrypted contents of buf->b_data out, and then promptly
+	 * decrypt back into buf->b_data like we would otherwise, and free the
+	 * abd if we made it.
+	 */
+	if (srcbuf == NULL && hdr->b_crypt_hdr.b_rabd != NULL)
+		srcbuf = hdr->b_crypt_hdr.b_rabd;
+	if (srcbuf == NULL) {
+		sidebuf = abd_alloc(arc_buf_size(buf), B_TRUE);
+		ASSERT3P(sidebuf, !=, NULL);
+
+		ASSERT3P(buf->b_data, !=, NULL);
+		if (hdr->b_l1hdr.b_freeze_cksum != NULL) {
+			rehash = B_TRUE;
+		}
+		abd_copy_from_buf(sidebuf, buf->b_data, arc_buf_size(buf));
+		srcbuf = sidebuf;
+	}
+	ASSERT3P(buf->b_data, !=, NULL);
+	ASSERT3U(srcbuf, !=, NULL);
+	zio_crypt_copy_dnode_bonus(srcbuf, buf->b_data,
 	    arc_buf_size(buf));
+	if (sidebuf != NULL) {
+		/*
+		 * If we set this above, then we noticed we had a frozen_cksum
+		 * allocated. We can't just use compute, because that will
+		 * refuse to update a non-NULL freeze_cksum.
+		 *
+		 * I couldn't find proof that this would wind up racing, but if
+		 * it does, as I suspect it could, I believe we'd want to rip
+		 * out the contents of these two functions and do them both
+		 * under the lock without dropping it.
+		 */
+		if (rehash) {
+			arc_cksum_free(hdr);
+			arc_cksum_compute(buf);
+		}
+		abd_free(sidebuf);
+	}
 	buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
 	buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
 	hdr->b_crypt_hdr.b_ebufcnt -= 1;
