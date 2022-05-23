@@ -1,0 +1,82 @@
+#
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
+#
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
+#
+# This run file contains all of the common functional tests.  When
+# adding a new test consider also adding it to the sanity.run file
+# if the new test runs to completion in only a few seconds.
+#
+# Approximate run time: 4-5 hours
+#
+
+[DEFAULT]
+pre = setup
+quiet = False
+pre_user = root
+user = root
+timeout = 600
+post_user = root
+post = cleanup
+failsafe_user = root
+failsafe = callbacks/zfs_failsafe
+outputdir = /var/tmp/test_results
+tags = ['functional']
+
+
+[tests/functional/cli_root/zfs_change-key]
+tests = ['zfs_change-key', 'zfs_change-key_child', 'zfs_change-key_format',
+    'zfs_change-key_inherit', 'zfs_change-key_load', 'zfs_change-key_location',
+    'zfs_change-key_pbkdf2iters', 'zfs_change-key_clones']
+tags = ['functional', 'cli_root', 'zfs_change-key']
+
+[tests/functional/cli_root/zfs_create]
+tests = ['zfs_create_encrypted',
+    'zfs_create_crypt_combos']
+tags = ['functional', 'cli_root', 'zfs_create']
+
+[tests/functional/cli_root/zfs_load-key]
+tests = ['zfs_load-key', 'zfs_load-key_all', 'zfs_load-key_file',
+    'zfs_load-key_https', 'zfs_load-key_location', 'zfs_load-key_noop',
+    'zfs_load-key_recursive']
+tags = ['functional', 'cli_root', 'zfs_load-key']
+
+[tests/functional/cli_root/zfs_receive]
+tests = ['zfs_receive_from_encrypted', 'zfs_receive_to_encrypted',
+    'zfs_receive_raw', 'zfs_receive_raw_incremental', 'zfs_receive_-e',
+    'zfs_receive_raw_-d',
+    'zfs_receive_-wR-encrypted-mix']
+tags = ['functional', 'cli_root', 'zfs_receive']
+
+[tests/functional/cli_root/zfs_send]
+tests = ['zfs_send_encrypted', 'zfs_send_raw']
+tags = ['functional', 'cli_root', 'zfs_send']
+
+[tests/functional/cli_root/zfs_unload-key]
+tests = ['zfs_unload-key', 'zfs_unload-key_all', 'zfs_unload-key_recursive']
+tags = ['functional', 'cli_root', 'zfs_unload-key']
+
+
+[tests/functional/cli_root/zpool_create]
+tests = ['zpool_create_encrypted', 'zpool_create_crypt_combos']
+tags = ['functional', 'cli_root', 'zpool_create']
+
+[tests/functional/cli_root/zpool_import]
+tests = ['zpool_import_encrypted', 'zpool_import_encrypted_load',
+    'zpool_import_errata3', 'zpool_import_errata4']
+tags = ['functional', 'cli_root', 'zpool_import']
+timeout = 1200
+
+
+[tests/functional/rsend]
+tests = ['send_encrypted_hierarchy',
+    'send_encrypted_props', 'send_encrypted_truncated_files',
+    'send_realloc_encrypted_files','send_mixed_raw', 'send-wR_encrypted_zvol',
+    'send_raw_spill_block', 'send_raw_ashift']
+tags = ['functional', 'rsend']
+

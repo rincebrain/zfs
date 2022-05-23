@@ -89,6 +89,11 @@ static const int dmu_rescan_dnode_threshold = 1 << DN_MAX_INDBLKSHIFT;
 
 static const char *upgrade_tag = "upgrade_tag";
 
+/*
+ * No quota upgrade triggering allowed.
+ */
+static int dmu_objset_no_upgrades = 1;
+
 static void dmu_objset_find_dp_cb(void *arg);
 
 static void dmu_objset_upgrade(objset_t *os, dmu_objset_upgrade_cb_t cb);
@@ -818,8 +823,9 @@ dmu_objset_own(const char *name, dmu_objset_type_t type,
 	 * speed up pool import times and to keep this txg reserved
 	 * completely for recovery work.
 	 */
-	if (!readonly && !dp->dp_spa->spa_claiming &&
-	    (ds->ds_dir->dd_crypto_obj == 0 || decrypt)) {
+	if ((!readonly && !dp->dp_spa->spa_claiming &&
+	    (ds->ds_dir->dd_crypto_obj == 0 || decrypt)) &&
+	    !(dmu_objset_no_upgrades)) {
 		if (dmu_objset_userobjspace_upgradable(*osp) ||
 		    dmu_objset_projectquota_upgradable(*osp)) {
 			dmu_objset_id_quota_upgrade(*osp);
@@ -1491,6 +1497,10 @@ dmu_objset_upgrade(objset_t *os, dmu_objset_upgrade_cb_t cb)
 {
 	if (os->os_upgrade_id != 0)
 		return;
+
+	if (dmu_objset_no_upgrades != 0) {
+		return;
+	}
 
 	ASSERT(dsl_pool_config_held(dmu_objset_pool(os)));
 	dsl_dataset_long_hold(dmu_objset_ds(os), upgrade_tag);
@@ -2404,6 +2414,8 @@ dmu_objset_id_quota_upgrade_cb(objset_t *os)
 	if (!dmu_objset_projectquota_enabled(os) &&
 	    dmu_objset_userobjspace_present(os))
 		return (SET_ERROR(ENOTSUP));
+	if (dmu_objset_no_upgrades)
+		return (SET_ERROR(ENOTSUP));
 
 	if (dmu_objset_userobjused_enabled(os))
 		dmu_objset_ds(os)->ds_feature_activation[
@@ -3075,4 +3087,8 @@ EXPORT_SYMBOL(dmu_objset_projectquota_enabled);
 EXPORT_SYMBOL(dmu_objset_projectquota_present);
 EXPORT_SYMBOL(dmu_objset_projectquota_upgradable);
 EXPORT_SYMBOL(dmu_objset_id_quota_upgrade);
+
+ZFS_MODULE_PARAM(zfs, , dmu_objset_no_upgrades, INT, ZMOD_RW,
+	"Block upgrade thread triggers");
+
 #endif

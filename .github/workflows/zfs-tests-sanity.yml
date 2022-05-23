@@ -1,4 +1,4 @@
-name: zfs-tests-sanity
+name: zfs-tests-sanity-noerrata4
 
 on:
   push:
