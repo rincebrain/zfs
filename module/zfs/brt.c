@@ -900,7 +900,9 @@ static void
 brt_entry_fill(const blkptr_t *bp, brt_entry_t *bre, uint64_t *vdevidp)
 {
 
+	memset(bre, 0, sizeof(*bre));
 	bre->bre_offset = DVA_GET_OFFSET(&bp->blk_dva[0]);
+
 	*vdevidp = DVA_GET_VDEV(&bp->blk_dva[0]);
 }
 
@@ -935,14 +937,14 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 
 	brt_exit(brt);
 
-	error = zap_length_uint64(brt->brt_mos, mos_entries,
-	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, &one, &physsize);
+	error = zap_length_uint64(brt->brt_mos, mos_entries, &bre->bre_offset,
+	    BRT_KEY_WORDS, &one, &physsize);
 	if (error == 0) {
 		ASSERT3U(one, ==, 1);
 		ASSERT3U(physsize, ==, sizeof (bre->bre_refcount));
 
 		error = zap_lookup_uint64(brt->brt_mos, mos_entries,
-		    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
+		    &bre->bre_offset, BRT_KEY_WORDS, 1,
 		    sizeof (bre->bre_refcount), &bre->bre_refcount);
 		BRT_DEBUG("ZAP lookup: object=%llu vdev=%llu offset=%llu "
 		    "count=%llu error=%d", mos_entries, brtvd->bv_vdevid,
@@ -1112,6 +1114,7 @@ brt_entry_alloc(const brt_entry_t *bre_init)
 	memset(bre, 0, sizeof (*bre));
 
 	bre->bre_offset = bre_init->bre_offset;
+	bre->bre_refcount = bre_init->bre_refcount;
 
 	return (bre);
 }
@@ -1155,10 +1158,9 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_addref_entry_in_memory);
 	} else {
-		bre = brt_entry_alloc(&bre_search);
-
 		/* brt_entry_lookup() may drop the BRT lock. */
-		error = brt_entry_lookup(brt, brtvd, bre);
+		error = brt_entry_lookup(brt, brtvd, &bre_search);
+		/* bre_search now contains correct bre_refcount */
 		ASSERT(error == 0 || error == ENOENT);
 		if (error == 0)
 			BRTSTAT_BUMP(brt_addref_entry_on_disk);
@@ -1173,6 +1175,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 
 		racebre = avl_find(&brtvd->bv_tree, &bre_search, &where);
 		if (racebre == NULL) {
+			bre = brt_entry_alloc(&bre_search);
 			avl_insert(&brtvd->bv_tree, bre, where);
 			brt->brt_nentries++;
 		} else {
@@ -1181,7 +1184,6 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 			 * brt_entry_lookup().
 			 */
 			BRTSTAT_BUMP(brt_addref_entry_read_lost_race);
-			brt_entry_free(bre);
 			bre = racebre;
 		}
 	}
@@ -1220,10 +1222,9 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 		BRTSTAT_BUMP(brt_decref_entry_not_in_memory);
 	}
 
-	bre = brt_entry_alloc(&bre_search);
-
 	/* brt_entry_lookup() may drop the BRT lock. */
-	error = brt_entry_lookup(brt, brtvd, bre);
+	error = brt_entry_lookup(brt, brtvd, &bre_search);
+	/* bre_search now contains correct bre_refcount */
 	ASSERT(error == 0 || error == ENOENT);
 	/*
 	 * When the BRT lock was dropped, brt_vdevs[] may have been expanded
@@ -1234,7 +1235,6 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 
 	if (error == ENOENT) {
 		BRTSTAT_BUMP(brt_decref_entry_not_on_disk);
-		brt_entry_free(bre);
 		bre = NULL;
 		goto out;
 	}
@@ -1246,12 +1246,12 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 		 * brt_entry_lookup().
 		 */
 		BRTSTAT_BUMP(brt_decref_entry_read_lost_race);
-		brt_entry_free(bre);
 		bre = racebre;
 		goto out;
 	}
 
 	BRTSTAT_BUMP(brt_decref_entry_loaded_from_disk);
+	bre = brt_entry_alloc(&bre_search);
 	avl_insert(&brtvd->bv_tree, bre, where);
 	brt->brt_nentries++;
 
