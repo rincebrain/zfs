@@ -1292,7 +1292,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 
 	brt_entry_fill(bp, &bre_search, &vdevid);
 
-	brt_rlock(brt);
+	brt_wlock(brt);
 
 	brtvd = brt_vdev(brt, vdevid);
 	ASSERT(brtvd != NULL);
