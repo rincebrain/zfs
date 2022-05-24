@@ -1290,8 +1290,6 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	uint64_t vdevid;
 	int error;
 
-	ASSERT(!RW_LOCK_HELD(&brt->brt_lock));
-
 	brt_entry_fill(bp, &bre_search, &vdevid);
 
 	brt_rlock(brt);
