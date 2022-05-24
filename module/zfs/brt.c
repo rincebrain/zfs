@@ -262,7 +262,8 @@ typedef struct brt_vdev {
 	 */
 	uint64_t	bv_vdevid;
 	/*
-	 * If the structure intitiated? (bv_refcount and bv_bitmap are allocated?)
+	 * Is the structure intitiated?
+	 * (bv_refcount and bv_bitmap are allocated?)
 	 */
 	boolean_t	bv_initiated;
 	/*
@@ -326,6 +327,7 @@ typedef struct brt {
 	uint64_t	brt_dsize;
 	avl_tree_t	brt_pending_tree[TXG_SIZE];
 	kmutex_t	brt_pending_lock[TXG_SIZE];
+	/* Sum of all entries across all bv_trees. */
 	uint64_t	brt_nentries;
 	brt_vdev_t	*brt_vdevs;
 	uint64_t	brt_nvdevs;
@@ -1306,8 +1308,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	}
 
 	/*
-	 * brt_entry_lookup() may drop the BRT (read) lock and
-	 * reacquire it (write).
+	 * brt_entry_lookup() may drop the BRT lock and reacquire it.
 	 */
 	error = brt_entry_lookup(brt, brtvd, &bre_search);
 	/* bre_search now contains correct bre_refcount */
