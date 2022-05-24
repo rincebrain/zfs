@@ -36,6 +36,8 @@
 #include <sys/dsl_pool.h>
 #include <sys/dsl_scan.h>
 #include <sys/vdev_impl.h>
+#include <sys/kstat.h>
+#include <sys/wmsum.h>
 
 /*
  * Block Cloning design.
@@ -372,7 +374,7 @@ static int zfs_brt_debug = 1;
 int brt_zap_leaf_blockshift = 12;
 int brt_zap_indirect_blockshift = 12;
 
-kstat_t	*brt_ksp = NULL;
+static kstat_t	*brt_ksp;
 
 typedef struct brt_stats {
 	kstat_named_t brt_addref_entry_in_memory;
@@ -406,7 +408,23 @@ static brt_stats_t brt_stats = {
 	{ "decref_no_entry",			KSTAT_DATA_UINT64 }
 };
 
-#define	BRTSTAT_BUMP(stat)	atomic_inc_64(&brt_stats.stat.value.ui64)
+struct {
+	wmsum_t brt_addref_entry_in_memory;
+	wmsum_t brt_addref_entry_not_on_disk;
+	wmsum_t brt_addref_entry_on_disk;
+	wmsum_t brt_addref_entry_read_lost_race;
+	wmsum_t brt_decref_entry_in_memory;
+	wmsum_t brt_decref_entry_loaded_from_disk;
+	wmsum_t brt_decref_entry_not_in_memory;
+	wmsum_t brt_decref_entry_not_on_disk;
+	wmsum_t brt_decref_entry_read_lost_race;
+	wmsum_t brt_decref_entry_still_referenced;
+	wmsum_t brt_decref_free_data_later;
+	wmsum_t brt_decref_free_data_now;
+	wmsum_t brt_decref_no_entry;
+} brt_sums;
+
+#define	BRTSTAT_BUMP(stat)	wmsum_add(&brt_sums.stat, 1)
 
 static int brt_entry_compare(const void *x1, const void *x2);
 static int brt_pending_entry_compare(const void *x1, const void *x2);
@@ -1072,13 +1090,67 @@ brt_get_pool_ratio(spa_t *spa)
 	return ((brt->brt_drefsize + brt->brt_dsize) * 100 / brt->brt_drefsize);
 }
 
+static int
+brt_kstats_update(kstat_t *ksp, int rw)
+{
+	brt_stats_t *bs = ksp->ks_data;
+
+	if (rw == KSTAT_WRITE)
+		return (EACCES);
+
+	bs->brt_addref_entry_in_memory.value.ui64 =
+	    wmsum_value(&brt_sums.brt_addref_entry_in_memory);
+	bs->brt_addref_entry_not_on_disk.value.ui64 =
+	    wmsum_value(&brt_sums.brt_addref_entry_not_on_disk);
+	bs->brt_addref_entry_on_disk.value.ui64 =
+	    wmsum_value(&brt_sums.brt_addref_entry_on_disk);
+	bs->brt_addref_entry_read_lost_race.value.ui64 =
+	    wmsum_value(&brt_sums.brt_addref_entry_read_lost_race);
+	bs->brt_decref_entry_in_memory.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_in_memory);
+	bs->brt_decref_entry_loaded_from_disk.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_loaded_from_disk);
+	bs->brt_decref_entry_not_in_memory.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_not_in_memory);
+	bs->brt_decref_entry_not_on_disk.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_not_on_disk);
+	bs->brt_decref_entry_read_lost_race.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_read_lost_race);
+	bs->brt_decref_entry_still_referenced.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_entry_still_referenced);
+	bs->brt_decref_free_data_later.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_free_data_later);
+	bs->brt_decref_free_data_now.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_free_data_now);
+	bs->brt_decref_no_entry.value.ui64 =
+	    wmsum_value(&brt_sums.brt_decref_no_entry);
+
+	return (0);
+}
+
 static void
 brt_stat_init(void)
 {
-	brt_ksp = kstat_create("zfs", 0, "brt", "misc", KSTAT_TYPE_NAMED,
+
+	wmsum_init(&brt_sums.brt_addref_entry_in_memory, 0);
+	wmsum_init(&brt_sums.brt_addref_entry_not_on_disk, 0);
+	wmsum_init(&brt_sums.brt_addref_entry_on_disk, 0);
+	wmsum_init(&brt_sums.brt_addref_entry_read_lost_race, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_in_memory, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_loaded_from_disk, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_not_in_memory, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_not_on_disk, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_read_lost_race, 0);
+	wmsum_init(&brt_sums.brt_decref_entry_still_referenced, 0);
+	wmsum_init(&brt_sums.brt_decref_free_data_later, 0);
+	wmsum_init(&brt_sums.brt_decref_free_data_now, 0);
+	wmsum_init(&brt_sums.brt_decref_no_entry, 0);
+
+	brt_ksp = kstat_create("zfs", 0, "brtstats", "misc", KSTAT_TYPE_NAMED,
 	    sizeof (brt_stats) / sizeof (kstat_named_t), KSTAT_FLAG_VIRTUAL);
 	if (brt_ksp != NULL) {
 		brt_ksp->ks_data = &brt_stats;
+		brt_ksp->ks_update = brt_kstats_update;
 		kstat_install(brt_ksp);
 	}
 }
@@ -1090,6 +1162,20 @@ brt_stat_fini(void)
 		kstat_delete(brt_ksp);
 		brt_ksp = NULL;
 	}
+
+	wmsum_fini(&brt_sums.brt_addref_entry_in_memory);
+	wmsum_fini(&brt_sums.brt_addref_entry_not_on_disk);
+	wmsum_fini(&brt_sums.brt_addref_entry_on_disk);
+	wmsum_fini(&brt_sums.brt_addref_entry_read_lost_race);
+	wmsum_fini(&brt_sums.brt_decref_entry_in_memory);
+	wmsum_fini(&brt_sums.brt_decref_entry_loaded_from_disk);
+	wmsum_fini(&brt_sums.brt_decref_entry_not_in_memory);
+	wmsum_fini(&brt_sums.brt_decref_entry_not_on_disk);
+	wmsum_fini(&brt_sums.brt_decref_entry_read_lost_race);
+	wmsum_fini(&brt_sums.brt_decref_entry_still_referenced);
+	wmsum_fini(&brt_sums.brt_decref_free_data_later);
+	wmsum_fini(&brt_sums.brt_decref_free_data_now);
+	wmsum_fini(&brt_sums.brt_decref_no_entry);
 }
 
 void
