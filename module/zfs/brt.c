@@ -315,7 +315,7 @@ typedef struct brt_vdev {
  * In-core brt
  */
 typedef struct brt {
-	kmutex_t	brt_lock;
+	krwlock_t	brt_lock;
 	spa_t		*brt_spa;
 #define	brt_mos		brt_spa->spa_meta_objset
 	uint64_t	brt_blocksize;
@@ -412,15 +412,21 @@ static int brt_entry_compare(const void *x1, const void *x2);
 static int brt_pending_entry_compare(const void *x1, const void *x2);
 
 static void
-brt_enter(brt_t *brt)
+brt_rlock(brt_t *brt)
 {
-	mutex_enter(&brt->brt_lock);
+	rw_enter(&brt->brt_lock, RW_READER);
 }
 
 static void
-brt_exit(brt_t *brt)
+brt_wlock(brt_t *brt)
 {
-	mutex_exit(&brt->brt_lock);
+	rw_enter(&brt->brt_lock, RW_WRITER);
+}
+
+static void
+brt_unlock(brt_t *brt)
+{
+	rw_exit(&brt->brt_lock);
 }
 
 #ifdef ZFS_BRT_DEBUG
@@ -470,7 +476,7 @@ brt_vdev(brt_t *brt, uint64_t vdevid)
 {
 	brt_vdev_t *brtvd;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 
 	if (vdevid < brt->brt_nvdevs) {
 		brtvd = &brt->brt_vdevs[vdevid];
@@ -486,7 +492,7 @@ brt_vdev_create(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 {
 	char name[64];
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT0(brtvd->bv_mos_brtvdev);
 	ASSERT0(brtvd->bv_mos_entries);
 	ASSERT(brtvd->bv_refcount != NULL);
@@ -529,7 +535,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 	ulong_t *bitmap;
 	uint64_t nblocks, size;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 
 	spa_config_enter(brt->brt_spa, SCL_VDEV, FTAG, RW_READER);
 	vd = vdev_lookup_top(brt->brt_spa, brtvd->bv_vdevid);
@@ -641,7 +647,7 @@ static void
 brt_vdev_dealloc(brt_t *brt, brt_vdev_t *brtvd)
 {
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT(brtvd->bv_initiated);
 
 	kmem_free(brtvd->bv_refcount, sizeof (uint64_t) * brtvd->bv_size);
@@ -666,7 +672,7 @@ brt_vdev_destroy(brt_t *brt, brt_vdev_t *brtvd, dmu_tx_t *tx)
 	dmu_buf_t *db;
 	brt_vdev_phys_t *bvphys;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT(brtvd->bv_mos_brtvdev != 0);
 	ASSERT(brtvd->bv_mos_entries != 0);
 
@@ -703,7 +709,7 @@ brt_vdevs_expand(brt_t *brt, uint64_t nvdevs)
 	brt_vdev_t *brtvd, *vdevs;
 	uint64_t vdevid;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT3U(nvdevs, >, brt->brt_nvdevs);
 
 	vdevs = kmem_zalloc(sizeof (vdevs[0]) * nvdevs, KM_SLEEP);
@@ -735,9 +741,9 @@ brt_vdev_lookup(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre)
 	boolean_t found, unlock;
 	uint64_t idx;
 
-	if (!MUTEX_HELD(&brt->brt_lock)) {
+	if (!RW_LOCK_HELD(&brt->brt_lock)) {
 		unlock = TRUE;
-		brt_enter(brt);
+		brt_rlock(brt);
 	} else {
 		unlock = FALSE;
 	}
@@ -751,7 +757,7 @@ brt_vdev_lookup(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre)
 	}
 
 	if (unlock)
-		brt_exit(brt);
+		brt_unlock(brt);
 
 	return (found);
 }
@@ -762,7 +768,7 @@ brt_vdev_addref(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre,
 {
 	uint64_t idx;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 	ASSERT(brtvd != NULL);
 	ASSERT(brtvd->bv_refcount != NULL);
 
@@ -797,7 +803,7 @@ brt_vdev_decref(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre,
 {
 	uint64_t idx;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT(brtvd != NULL);
 	ASSERT(brtvd->bv_refcount != NULL);
 
@@ -862,7 +868,7 @@ brt_vdevs_load(brt_t *brt)
 	brt_vdev_t *brtvd;
 	uint64_t vdevid;
 
-	brt_enter(brt);
+	brt_wlock(brt);
 
 	brt_vdevs_expand(brt, brt->brt_spa->spa_root_vdev->vdev_children);
 	for (vdevid = 0; vdevid < brt->brt_nvdevs; vdevid++) {
@@ -875,7 +881,7 @@ brt_vdevs_load(brt_t *brt)
 		brt->brt_rangesize = BRT_RANGE_SIZE;
 	}
 
-	brt_exit(brt);
+	brt_unlock(brt);
 }
 
 static void
@@ -884,7 +890,7 @@ brt_vdevs_free(brt_t *brt)
 	brt_vdev_t *brtvd;
 	uint64_t vdevid;
 
-	brt_enter(brt);
+	brt_wlock(brt);
 
 	for (vdevid = 0; vdevid < brt->brt_nvdevs; vdevid++) {
 		brtvd = &brt->brt_vdevs[vdevid];
@@ -893,7 +899,7 @@ brt_vdevs_free(brt_t *brt)
 	}
 	kmem_free(brt->brt_vdevs, sizeof (brt_vdev_t) * brt->brt_nvdevs);
 
-	brt_exit(brt);
+	brt_unlock(brt);
 }
 
 static void
@@ -922,7 +928,7 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 	uint64_t one, physsize;
 	int error;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 
 	if (!brt_vdev_lookup(brt, brtvd, bre))
 		return (SET_ERROR(ENOENT));
@@ -935,7 +941,7 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 	if (mos_entries == 0)
 		return (SET_ERROR(ENOENT));
 
-	brt_exit(brt);
+	brt_unlock(brt);
 
 	error = zap_length_uint64(brt->brt_mos, mos_entries, &bre->bre_offset,
 	    BRT_KEY_WORDS, &one, &physsize);
@@ -951,7 +957,7 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 		    bre->bre_offset, error == 0 ? bre->bre_refcount : 0, error);
 	}
 
-	brt_enter(brt);
+	brt_wlock(brt);
 
 	return (error);
 }
@@ -962,11 +968,11 @@ brt_entry_prefetch(brt_t *brt, uint64_t vdevid, brt_entry_t *bre)
 	brt_vdev_t *brtvd;
 	uint64_t mos_entries = 0;
 
-	brt_enter(brt);	/* read lock */
+	brt_rlock(brt);
 	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd != NULL)
 		mos_entries = brtvd->bv_mos_entries;
-	brt_exit(brt);
+	brt_unlock(brt);
 
 	if (mos_entries == 0)
 		return;
@@ -982,7 +988,7 @@ brt_entry_update(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 {
 	int error;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 	ASSERT(brtvd->bv_mos_entries != 0);
 	ASSERT(bre->bre_refcount > 0);
 
@@ -1001,7 +1007,7 @@ brt_entry_remove(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 {
 	int error;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 	ASSERT(brtvd->bv_mos_entries != 0);
 	ASSERT0(bre->bre_refcount);
 
@@ -1030,7 +1036,7 @@ brt_may_exists(spa_t *spa, const blkptr_t *bp)
 
 	brt_entry_fill(bp, &bre_search, &vdevid);
 
-	brt_enter(brt);
+	brt_rlock(brt);
 
 	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd != NULL && brtvd->bv_initiated) {
@@ -1040,7 +1046,7 @@ brt_may_exists(spa_t *spa, const blkptr_t *bp)
 		}
 	}
 
-	brt_exit(brt);
+	brt_unlock(brt);
 
 	return (mayexists);
 }
@@ -1136,11 +1142,11 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	uint64_t vdevid;
 	int error;
 
-	ASSERT(!MUTEX_HELD(&brt->brt_lock));
+	ASSERT(!RW_WRITE_HELD(&brt->brt_lock));
 
 	brt_entry_fill(bp, &bre_search, &vdevid);
 
-	brt_enter(brt);
+	brt_wlock(brt);
 
 	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd == NULL) {
@@ -1158,7 +1164,10 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_addref_entry_in_memory);
 	} else {
-		/* brt_entry_lookup() may drop the BRT lock. */
+		/*
+		 * brt_entry_lookup() may drop the BRT (read) lock and
+		 * reacquire it (write).
+		 */
 		error = brt_entry_lookup(brt, brtvd, &bre_search);
 		/* bre_search now contains correct bre_refcount */
 		ASSERT(error == 0 || error == ENOENT);
@@ -1176,6 +1185,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 		racebre = avl_find(&brtvd->bv_tree, &bre_search, &where);
 		if (racebre == NULL) {
 			bre = brt_entry_alloc(&bre_search);
+			ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 			avl_insert(&brtvd->bv_tree, bre, where);
 			brt->brt_nentries++;
 		} else {
@@ -1190,7 +1200,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	bre->bre_refcount++;
 	brt_vdev_addref(brt, brtvd, bre, bp_get_dsize(brt->brt_spa, bp));
 
-	brt_exit(brt);
+	brt_unlock(brt);
 }
 
 /* Return TRUE if block should be freed immediately. */
@@ -1205,11 +1215,11 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	uint64_t vdevid;
 	int error;
 
-	ASSERT(!MUTEX_HELD(&brt->brt_lock));
+	ASSERT(!RW_LOCK_HELD(&brt->brt_lock));
 
 	brt_entry_fill(bp, &bre_search, &vdevid);
 
-	brt_enter(brt);
+	brt_rlock(brt);
 
 	brtvd = brt_vdev(brt, vdevid);
 	ASSERT(brtvd != NULL);
@@ -1222,7 +1232,10 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 		BRTSTAT_BUMP(brt_decref_entry_not_in_memory);
 	}
 
-	/* brt_entry_lookup() may drop the BRT lock. */
+	/*
+	 * brt_entry_lookup() may drop the BRT (read) lock and
+	 * reacquire it (write).
+	 */
 	error = brt_entry_lookup(brt, brtvd, &bre_search);
 	/* bre_search now contains correct bre_refcount */
 	ASSERT(error == 0 || error == ENOENT);
@@ -1252,6 +1265,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 
 	BRTSTAT_BUMP(brt_decref_entry_loaded_from_disk);
 	bre = brt_entry_alloc(&bre_search);
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	avl_insert(&brtvd->bv_tree, bre, where);
 	brt->brt_nentries++;
 
@@ -1260,12 +1274,12 @@ out:
 		/*
 		 * This is a free of a regular (not cloned) block.
 		 */
-		brt_exit(brt);
+		brt_unlock(brt);
 		BRTSTAT_BUMP(brt_decref_no_entry);
 		return (B_TRUE);
 	}
 	if (bre->bre_refcount == 0) {
-		brt_exit(brt);
+		brt_unlock(brt);
 		BRTSTAT_BUMP(brt_decref_free_data_now);
 		return (B_TRUE);
 	}
@@ -1278,7 +1292,7 @@ out:
 		BRTSTAT_BUMP(brt_decref_entry_still_referenced);
 	brt_vdev_decref(brt, brtvd, bre, bp_get_dsize(brt->brt_spa, bp));
 
-	brt_exit(brt);
+	brt_unlock(brt);
 
 	return (B_FALSE);
 }
@@ -1459,7 +1473,7 @@ static void
 brt_sync_entry(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 {
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	ASSERT(RW_WRITE_HELD(&brt->brt_lock));
 	ASSERT(brtvd->bv_mos_entries != 0);
 
 	if (bre->bre_refcount == 0) {
@@ -1485,7 +1499,7 @@ brt_sync_table(brt_t *brt, dmu_tx_t *tx)
 	uint64_t vdevid;
 	void *c;
 
-	ASSERT(MUTEX_HELD(&brt->brt_lock));
+	brt_wlock(brt);
 
 	for (vdevid = 0; vdevid < brt->brt_nvdevs; vdevid++) {
 		brtvd = &brt->brt_vdevs[vdevid];
@@ -1518,6 +1532,8 @@ brt_sync_table(brt_t *brt, dmu_tx_t *tx)
 	}
 
 	ASSERT0(brt->brt_nentries);
+
+	brt_unlock(brt);
 }
 
 void
@@ -1529,19 +1545,17 @@ brt_sync(spa_t *spa, uint64_t txg)
 	ASSERT(spa_syncing_txg(spa) == txg);
 
 	brt = spa->spa_brt;
-	brt_enter(brt);
+	brt_rlock(brt);
 	if (brt->brt_nentries == 0) {
 		/* No changes. */
-		brt_exit(brt);
+		brt_unlock(brt);
 		return;
 	}
-	brt_exit(brt);
+	brt_unlock(brt);
 
 	tx = dmu_tx_create_assigned(spa->spa_dsl_pool, txg);
 
-	brt_enter(brt);
 	brt_sync_table(brt, tx);
-	brt_exit(brt);
 
 	dmu_tx_commit(tx);
 }
@@ -1582,7 +1596,7 @@ brt_create(spa_t *spa)
 	ASSERT(spa->spa_brt == NULL);
 
 	brt = kmem_zalloc(sizeof (*brt), KM_SLEEP);
-	mutex_init(&brt->brt_lock, NULL, MUTEX_DEFAULT, NULL);
+	rw_init(&brt->brt_lock, NULL, RW_DEFAULT, NULL);
 	brt->brt_spa = spa;
 	brt->brt_blocksize = (1 << spa->spa_min_ashift);
 	brt->brt_rangesize = 0;
@@ -1614,7 +1628,7 @@ brt_unload(spa_t *spa)
 
 	brt_vdevs_free(brt);
 	brt_table_free(brt);
-	mutex_destroy(&brt->brt_lock);
+	rw_destroy(&brt->brt_lock);
 	kmem_free(brt, sizeof (*brt));
 	spa->spa_brt = NULL;
 }
