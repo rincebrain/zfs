@@ -756,28 +756,17 @@ brt_vdevs_expand(brt_t *brt, uint64_t nvdevs)
 static boolean_t
 brt_vdev_lookup(brt_t *brt, brt_vdev_t *brtvd, const brt_entry_t *bre)
 {
-	boolean_t found, unlock;
 	uint64_t idx;
 
-	if (!RW_LOCK_HELD(&brt->brt_lock)) {
-		unlock = TRUE;
-		brt_rlock(brt);
-	} else {
-		unlock = FALSE;
-	}
+	ASSERT(RW_LOCK_HELD(&brt->brt_lock));
 
 	idx = bre->bre_offset / brt->brt_rangesize;
 	if (brtvd->bv_refcount != NULL && idx < brtvd->bv_size) {
 		/* VDEV wasn't expanded. */
-		found = brtvd->bv_refcount[idx] > 0;
-	} else {
-		found = FALSE;
+		return (brtvd->bv_refcount[idx] > 0);
 	}
 
-	if (unlock)
-		brt_unlock(brt);
-
-	return (found);
+	return (FALSE);
 }
 
 static void
