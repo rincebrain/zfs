@@ -337,7 +337,6 @@ typedef struct brt {
  * On-disk we use bre_offset as the key and bre_refcount as the value.
  */
 typedef struct brt_entry {
-	uint64_t	bre_vdevid;
 	uint64_t	bre_offset;
 	uint64_t	bre_refcount;
 	avl_node_t	bre_node;
@@ -467,14 +466,12 @@ brt_vdev_dump(brt_t *brt)
 #endif
 
 static brt_vdev_t *
-brt_vdev(brt_t *brt, brt_entry_t *bre)
+brt_vdev(brt_t *brt, uint64_t vdevid)
 {
 	brt_vdev_t *brtvd;
-	uint64_t vdevid;
 
 	ASSERT(MUTEX_HELD(&brt->brt_lock));
 
-	vdevid = bre->bre_vdevid;
 	if (vdevid < brt->brt_nvdevs) {
 		brtvd = &brt->brt_vdevs[vdevid];
 	} else {
@@ -905,11 +902,11 @@ brt_vdevs_free(brt_t *brt)
 }
 
 static void
-brt_entry_fill(brt_entry_t *bre, const blkptr_t *bp)
+brt_entry_fill(const blkptr_t *bp, brt_entry_t *bre, uint64_t *vdevidp)
 {
 
-	bre->bre_vdevid = DVA_GET_VDEV(&bp->blk_dva[0]);
 	bre->bre_offset = DVA_GET_OFFSET(&bp->blk_dva[0]);
+	*vdevidp = DVA_GET_VDEV(&bp->blk_dva[0]);
 }
 
 static int
@@ -918,17 +915,7 @@ brt_entry_compare(const void *x1, const void *x2)
 	const brt_entry_t *bre1 = x1;
 	const brt_entry_t *bre2 = x2;
 
-	if (bre1->bre_vdevid < bre2->bre_vdevid)
-		return (-1);
-	else if (bre1->bre_vdevid > bre2->bre_vdevid)
-		return (1);
-
-	if (bre1->bre_offset < bre2->bre_offset)
-		return (-1);
-	else if (bre1->bre_offset > bre2->bre_offset)
-		return (1);
-
-	return (0);
+	return (TREE_CMP(bre1->bre_offset, bre2->bre_offset));
 }
 
 static int
@@ -963,7 +950,7 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 		    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
 		    sizeof (bre->bre_refcount), &bre->bre_refcount);
 		BRT_DEBUG("ZAP lookup: object=%llu vdev=%llu offset=%llu "
-		    "count=%llu error=%d", mos_entries, bre->bre_vdevid,
+		    "count=%llu error=%d", mos_entries, brtvd->bv_vdevid,
 		    bre->bre_offset, error == 0 ? bre->bre_refcount : 0, error);
 	}
 
@@ -973,13 +960,13 @@ brt_entry_lookup(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre)
 }
 
 static void
-brt_entry_prefetch(brt_t *brt, brt_entry_t *bre)
+brt_entry_prefetch(brt_t *brt, uint64_t vdevid, brt_entry_t *bre)
 {
 	brt_vdev_t *brtvd;
 	uint64_t mos_entries = 0;
 
 	brt_enter(brt);	/* read lock */
-	brtvd = brt_vdev(brt, bre);
+	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd != NULL)
 		mos_entries = brtvd->bv_mos_entries;
 	brt_exit(brt);
@@ -988,7 +975,7 @@ brt_entry_prefetch(brt_t *brt, brt_entry_t *bre)
 		return;
 
 	BRT_DEBUG("ZAP prefetch: object=%llu vdev=%llu offset=%llu",
-	    mos_entries, bre->bre_vdevid, bre->bre_offset);
+	    mos_entries, vdevid, bre->bre_offset);
 	(void) zap_prefetch_uint64(brt->brt_mos, mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS);
 }
@@ -1006,8 +993,8 @@ brt_entry_update(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, 1,
 	    sizeof (bre->bre_refcount), &bre->bre_refcount, tx);
 	BRT_DEBUG("ZAP update: object=%llu vdev=%llu offset=%llu count=%llu "
-	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
-	    bre->bre_refcount, error);
+	    "error=%d", brtvd->bv_mos_entries, brtvd->bv_vdevid,
+	    bre->bre_offset, bre->bre_refcount, error);
 
 	return (error);
 }
@@ -1024,8 +1011,8 @@ brt_entry_remove(brt_t *brt, brt_vdev_t *brtvd, brt_entry_t *bre, dmu_tx_t *tx)
 	error = zap_remove_uint64(brt->brt_mos, brtvd->bv_mos_entries,
 	    (uint64_t *)&bre->bre_offset, BRT_KEY_WORDS, tx);
 	BRT_DEBUG("ZAP remove: object=%llu vdev=%llu offset=%llu count=%llu "
-	    "error=%d", brtvd->bv_mos_entries, bre->bre_vdevid, bre->bre_offset,
-	    bre->bre_refcount, error);
+	    "error=%d", brtvd->bv_mos_entries, brtvd->bv_vdevid,
+	    bre->bre_offset, bre->bre_refcount, error);
 
 	return (error);
 }
@@ -1042,12 +1029,13 @@ brt_may_exists(spa_t *spa, const blkptr_t *bp)
 	brt_vdev_t *brtvd;
 	brt_entry_t bre_search;
 	boolean_t mayexists = FALSE;
+	uint64_t vdevid;
 
-	brt_entry_fill(&bre_search, bp);
+	brt_entry_fill(bp, &bre_search, &vdevid);
 
 	brt_enter(brt);
 
-	brtvd = brt_vdev(brt, &bre_search);
+	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd != NULL && brtvd->bv_initiated) {
 		if (!avl_is_empty(brtvd->bv_tree) ||
 		    brt_vdev_lookup(brt, brtvd, &bre_search)) {
@@ -1126,9 +1114,8 @@ brt_entry_alloc(const brt_entry_t *bre_init)
 	brt_entry_t *bre;
 
 	bre = kmem_cache_alloc(brt_entry_cache, KM_SLEEP);
-	memset(bre, 0, sizeof (brt_entry_t));
+	memset(bre, 0, sizeof (*bre));
 
-	bre->bre_vdevid = bre_init->bre_vdevid;
 	bre->bre_offset = bre_init->bre_offset;
 
 	return (bre);
@@ -1148,23 +1135,22 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	brt_entry_t *bre, *racebre;
 	brt_entry_t bre_search;
 	avl_index_t where;
+	uint64_t vdevid;
 	int error;
 
 	ASSERT(!MUTEX_HELD(&brt->brt_lock));
 
-	brt_entry_fill(&bre_search, bp);
+	brt_entry_fill(bp, &bre_search, &vdevid);
 
 	brt_enter(brt);
 
-	brtvd = brt_vdev(brt, &bre_search);
+	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd == NULL) {
-		uint64_t vdevid = bre_search.bre_vdevid;
-
 		ASSERT3U(vdevid, >=, brt->brt_nvdevs);
 
 		/* New VDEV was added. */
 		brt_vdevs_expand(brt, vdevid + 1);
-		brtvd = brt_vdev(brt, &bre_search);
+		brtvd = brt_vdev(brt, vdevid);
 	}
 	ASSERT(brtvd != NULL);
 	if (!brtvd->bv_initiated)
@@ -1187,7 +1173,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 		 * When the BRT lock was dropped, brt_vdevs[] may have been
 		 * expanded and reallocated, we need to update brtvd's pointer.
 		 */
-		brtvd = brt_vdev(brt, bre);
+		brtvd = brt_vdev(brt, vdevid);
 		ASSERT(brtvd != NULL);
 
 		racebre = avl_find(brtvd->bv_tree, &bre_search, &where);
@@ -1219,15 +1205,16 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	brt_entry_t *bre, *racebre;
 	brt_entry_t bre_search;
 	avl_index_t where;
+	uint64_t vdevid;
 	int error;
 
 	ASSERT(!MUTEX_HELD(&brt->brt_lock));
 
-	brt_entry_fill(&bre_search, bp);
+	brt_entry_fill(bp, &bre_search, &vdevid);
 
 	brt_enter(brt);
 
-	brtvd = brt_vdev(brt, &bre_search);
+	brtvd = brt_vdev(brt, vdevid);
 	ASSERT(brtvd != NULL);
 
 	bre = avl_find(brtvd->bv_tree, &bre_search, NULL);
@@ -1247,7 +1234,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	 * When the BRT lock was dropped, brt_vdevs[] may have been expanded
 	 * and reallocated, we need to update brtvd's pointer.
 	 */
-	brtvd = brt_vdev(brt, bre);
+	brtvd = brt_vdev(brt, vdevid);
 	ASSERT(brtvd != NULL);
 
 	if (error == ENOENT) {
@@ -1305,15 +1292,16 @@ static void
 brt_prefetch(brt_t *brt, const blkptr_t *bp)
 {
 	brt_entry_t bre;
+	uint64_t vdevid;
 
 	ASSERT(bp != NULL);
 
 	if (!zfs_brt_prefetch)
 		return;
 
-	brt_entry_fill(&bre, bp);
+	brt_entry_fill(bp, &bre, &vdevid);
 
-	brt_entry_prefetch(brt, &bre);
+	brt_entry_prefetch(brt, vdevid, &bre);
 }
 
 static int
