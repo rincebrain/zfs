@@ -533,7 +533,7 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 
 	spa_config_enter(brt->brt_spa, SCL_VDEV, FTAG, RW_READER);
 	vd = vdev_lookup_top(brt->brt_spa, brtvd->bv_vdevid);
-	size = vdev_get_min_asize(vd) / brt->brt_rangesize + 1;
+	size = (vdev_get_min_asize(vd) - 1) / brt->brt_rangesize + 1;
 	spa_config_exit(brt->brt_spa, SCL_VDEV, FTAG);
 
 	refcount = kmem_zalloc(sizeof (uint64_t) * size, KM_SLEEP);
