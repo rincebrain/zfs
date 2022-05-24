@@ -260,7 +260,7 @@ typedef struct brt_vdev {
 	 */
 	uint64_t	bv_vdevid;
 	/*
-	 * If the structure intitiated? (bv_tree, bv_refcount are allocated?)
+	 * If the structure intitiated? (bv_refcount and bv_bitmap are allocated?)
 	 */
 	boolean_t	bv_initiated;
 	/*
@@ -274,7 +274,7 @@ typedef struct brt_vdev {
 	/*
 	 * Entries to sync.
 	 */
-	avl_tree_t	*bv_tree;
+	avl_tree_t	bv_tree;
 	/*
 	 * Number of entries in the bv_refcount[] array.
 	 */
@@ -546,16 +546,13 @@ brt_vdev_realloc(brt_t *brt, brt_vdev_t *brtvd)
 		ASSERT(brtvd->bv_bitmap == NULL);
 		ASSERT0(brtvd->bv_nblocks);
 
-		brtvd->bv_tree = kmem_zalloc(sizeof (*brtvd->bv_tree),
-		    KM_SLEEP);
-		avl_create(brtvd->bv_tree, brt_entry_compare,
+		avl_create(&brtvd->bv_tree, brt_entry_compare,
 		    sizeof (brt_entry_t), offsetof(brt_entry_t, bre_node));
 	} else {
 		ASSERT(brtvd->bv_size > 0);
 		ASSERT(brtvd->bv_refcount != NULL);
 		ASSERT(brtvd->bv_bitmap != NULL);
 		ASSERT(brtvd->bv_nblocks > 0);
-		ASSERT(brtvd->bv_tree != NULL);
 		/*
 		 * TODO: Allow vdev shrinking. We only need to implement
 		 * shrinking the on-disk BRT VDEV object.
@@ -651,10 +648,8 @@ brt_vdev_dealloc(brt_t *brt, brt_vdev_t *brtvd)
 	brtvd->bv_refcount = NULL;
 	kmem_free(brtvd->bv_bitmap, BT_SIZEOFMAP(brtvd->bv_nblocks));
 	brtvd->bv_bitmap = NULL;
-	ASSERT0(avl_numnodes(brtvd->bv_tree));
-	avl_destroy(brtvd->bv_tree);
-	kmem_free(brtvd->bv_tree, sizeof (*brtvd->bv_tree));
-	brtvd->bv_tree = NULL;
+	ASSERT0(avl_numnodes(&brtvd->bv_tree));
+	avl_destroy(&brtvd->bv_tree);
 
 	brtvd->bv_size = 0;
 	brtvd->bv_nblocks = 0;
@@ -1037,7 +1032,7 @@ brt_may_exists(spa_t *spa, const blkptr_t *bp)
 
 	brtvd = brt_vdev(brt, vdevid);
 	if (brtvd != NULL && brtvd->bv_initiated) {
-		if (!avl_is_empty(brtvd->bv_tree) ||
+		if (!avl_is_empty(&brtvd->bv_tree) ||
 		    brt_vdev_lookup(brt, brtvd, &bre_search)) {
 			mayexists = TRUE;
 		}
@@ -1156,7 +1151,7 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 	if (!brtvd->bv_initiated)
 		brt_vdev_realloc(brt, brtvd);
 
-	bre = avl_find(brtvd->bv_tree, &bre_search, NULL);
+	bre = avl_find(&brtvd->bv_tree, &bre_search, NULL);
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_addref_entry_in_memory);
 	} else {
@@ -1176,9 +1171,9 @@ brt_entry_addref(brt_t *brt, const blkptr_t *bp)
 		brtvd = brt_vdev(brt, vdevid);
 		ASSERT(brtvd != NULL);
 
-		racebre = avl_find(brtvd->bv_tree, &bre_search, &where);
+		racebre = avl_find(&brtvd->bv_tree, &bre_search, &where);
 		if (racebre == NULL) {
-			avl_insert(brtvd->bv_tree, bre, where);
+			avl_insert(&brtvd->bv_tree, bre, where);
 			brt->brt_nentries++;
 		} else {
 			/*
@@ -1217,7 +1212,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	brtvd = brt_vdev(brt, vdevid);
 	ASSERT(brtvd != NULL);
 
-	bre = avl_find(brtvd->bv_tree, &bre_search, NULL);
+	bre = avl_find(&brtvd->bv_tree, &bre_search, NULL);
 	if (bre != NULL) {
 		BRTSTAT_BUMP(brt_decref_entry_in_memory);
 		goto out;
@@ -1244,7 +1239,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 		goto out;
 	}
 
-	racebre = avl_find(brtvd->bv_tree, &bre_search, &where);
+	racebre = avl_find(&brtvd->bv_tree, &bre_search, &where);
 	if (racebre != NULL) {
 		/*
 		 * The entry was added when the BRT lock was dropped in
@@ -1257,7 +1252,7 @@ brt_entry_decref(spa_t *spa, const blkptr_t *bp)
 	}
 
 	BRTSTAT_BUMP(brt_decref_entry_loaded_from_disk);
-	avl_insert(brtvd->bv_tree, bre, where);
+	avl_insert(&brtvd->bv_tree, bre, where);
 	brt->brt_nentries++;
 
 out:
@@ -1499,17 +1494,17 @@ brt_sync_table(brt_t *brt, dmu_tx_t *tx)
 			continue;
 
 		if (!brtvd->bv_dirty) {
-			ASSERT0(avl_numnodes(brtvd->bv_tree));
+			ASSERT0(avl_numnodes(&brtvd->bv_tree));
 			continue;
 		}
 
-		ASSERT(avl_numnodes(brtvd->bv_tree) != 0);
+		ASSERT(avl_numnodes(&brtvd->bv_tree) != 0);
 
 		if (brtvd->bv_mos_brtvdev == 0)
 			brt_vdev_create(brt, brtvd, tx);
 
 		c = NULL;
-		while ((bre = avl_destroy_nodes(brtvd->bv_tree, &c)) != NULL) {
+		while ((bre = avl_destroy_nodes(&brtvd->bv_tree, &c)) != NULL) {
 			brt_sync_entry(brt, brtvd, bre, tx);
 			brt_entry_free(bre);
 			ASSERT(brt->brt_nentries > 0);
