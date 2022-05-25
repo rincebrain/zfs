@@ -2315,6 +2315,10 @@ dmu_objset_projectquota_present(objset_t *os)
 	    OBJSET_FLAG_PROJECTQUOTA_COMPLETE);
 }
 
+#ifndef _KERNEL
+#define current NULL
+#endif
+
 static int
 dmu_objset_space_upgrade(objset_t *os)
 {
@@ -2328,21 +2332,22 @@ dmu_objset_space_upgrade(objset_t *os)
 	 * that's fine, since we track each object's accounted state
 	 * independently.
 	 */
-
+	zfs_dbgmsg("How many times do we get into space_upgrade, I wonder, for a given objset %px %px", os, current);
+	mutex_enter(&os->os_upgrade_lock);
 	for (obj = 0; err == 0; err = dmu_object_next(os, &obj, FALSE, 0)) {
 		dmu_tx_t *tx;
 		dmu_buf_t *db;
 		int objerr;
 
-		mutex_enter(&os->os_upgrade_lock);
 		if (os->os_upgrade_exit)
 			err = SET_ERROR(EINTR);
-		mutex_exit(&os->os_upgrade_lock);
 		if (err != 0)
-			return (err);
+			goto end;
 
-		if (issig(JUSTLOOKING) && issig(FORREAL))
-			return (SET_ERROR(EINTR));
+		if (issig(JUSTLOOKING) && issig(FORREAL)) {
+			err = SET_ERROR(EINTR);
+			goto end;
+		}
 
 		objerr = dmu_bonus_hold(os, obj, FTAG, &db);
 		if (objerr != 0)
@@ -2358,8 +2363,11 @@ dmu_objset_space_upgrade(objset_t *os)
 		dmu_buf_will_dirty(db, tx);
 		dmu_buf_rele(db, FTAG);
 		dmu_tx_commit(tx);
+		err = 0;
 	}
-	return (0);
+end:
+	mutex_exit(&os->os_upgrade_lock);
+	return (err);
 }
 
 static int
