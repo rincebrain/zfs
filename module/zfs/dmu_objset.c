@@ -81,6 +81,11 @@ krwlock_t os_lock;
 static const int dmu_find_threads = 0;
 
 /*
+ * Shut off the user/group/projectquota stuff to workaround #11679
+ */
+static int dmu_objset_quota_disable = 1;
+
+/*
  * Backfill lower metadnode objects after this many have been freed.
  * Backfilling negatively impacts object creation rates, so only do it
  * if there are enough holes to fill.
@@ -819,7 +824,7 @@ dmu_objset_own(const char *name, dmu_objset_type_t type,
 	 * completely for recovery work.
 	 */
 	if (!readonly && !dp->dp_spa->spa_claiming &&
-	    (ds->ds_dir->dd_crypto_obj == 0 || decrypt)) {
+	    (ds->ds_dir->dd_crypto_obj == 0)) {
 		if (dmu_objset_userobjspace_upgradable(*osp) ||
 		    dmu_objset_projectquota_upgradable(*osp)) {
 			dmu_objset_id_quota_upgrade(*osp);
@@ -1492,6 +1497,9 @@ dmu_objset_upgrade(objset_t *os, dmu_objset_upgrade_cb_t cb)
 	if (os->os_upgrade_id != 0)
 		return;
 
+	if (dmu_objset_quota_disable)
+		return;
+
 	ASSERT(dsl_pool_config_held(dmu_objset_pool(os)));
 	dsl_dataset_long_hold(dmu_objset_ds(os), upgrade_tag);
 
@@ -1798,14 +1806,17 @@ dmu_objset_userused_enabled(objset_t *os)
 {
 	return (spa_version(os->os_spa) >= SPA_VERSION_USERSPACE &&
 	    file_cbs[os->os_phys->os_type] != NULL &&
-	    DMU_USERUSED_DNODE(os) != NULL);
+	    DMU_USERUSED_DNODE(os) != NULL &&
+	    !dmu_objset_quota_disable);
 }
 
 boolean_t
 dmu_objset_userobjused_enabled(objset_t *os)
 {
 	return (dmu_objset_userused_enabled(os) &&
-	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_USEROBJ_ACCOUNTING));
+	    spa_feature_is_enabled(os->os_spa,
+		SPA_FEATURE_USEROBJ_ACCOUNTING) &&
+	    !dmu_objset_quota_disable);
 }
 
 boolean_t
@@ -1813,7 +1824,8 @@ dmu_objset_projectquota_enabled(objset_t *os)
 {
 	return (file_cbs[os->os_phys->os_type] != NULL &&
 	    DMU_PROJECTUSED_DNODE(os) != NULL &&
-	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_PROJECT_QUOTA));
+	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_PROJECT_QUOTA) &&
+	    !dmu_objset_quota_disable);
 }
 
 typedef struct userquota_node {
@@ -2297,22 +2309,25 @@ dmu_objset_userquota_get_ids(dnode_t *dn, boolean_t before, dmu_tx_t *tx)
 boolean_t
 dmu_objset_userspace_present(objset_t *os)
 {
-	return (os->os_phys->os_flags &
-	    OBJSET_FLAG_USERACCOUNTING_COMPLETE);
+	return ((os->os_phys->os_flags &
+	    OBJSET_FLAG_USERACCOUNTING_COMPLETE) &&
+	    !(dmu_objset_quota_disable));
 }
 
 boolean_t
 dmu_objset_userobjspace_present(objset_t *os)
 {
-	return (os->os_phys->os_flags &
-	    OBJSET_FLAG_USEROBJACCOUNTING_COMPLETE);
+	return ((os->os_phys->os_flags &
+	    OBJSET_FLAG_USEROBJACCOUNTING_COMPLETE) &&
+	    !(dmu_objset_quota_disable));
 }
 
 boolean_t
 dmu_objset_projectquota_present(objset_t *os)
 {
-	return (os->os_phys->os_flags &
-	    OBJSET_FLAG_PROJECTQUOTA_COMPLETE);
+	return ((os->os_phys->os_flags &
+	    OBJSET_FLAG_PROJECTQUOTA_COMPLETE) &&
+	    !(dmu_objset_quota_disable));
 }
 
 static int
@@ -2320,6 +2335,9 @@ dmu_objset_space_upgrade(objset_t *os)
 {
 	uint64_t obj;
 	int err = 0;
+
+	if (dmu_objset_quota_disable)
+		return (SET_ERROR(EINTR));
 
 	/*
 	 * We simply need to mark every object dirty, so that it will be
@@ -3075,4 +3093,9 @@ EXPORT_SYMBOL(dmu_objset_projectquota_enabled);
 EXPORT_SYMBOL(dmu_objset_projectquota_present);
 EXPORT_SYMBOL(dmu_objset_projectquota_upgradable);
 EXPORT_SYMBOL(dmu_objset_id_quota_upgrade);
+
+ZFS_MODULE_PARAM(zfs, , dmu_objset_quota_disable, INT, ZMOD_RW,
+	"Disable user/group/projectquota as a workaround");
+
+
 #endif
