@@ -92,7 +92,7 @@ static const char *upgrade_tag = "upgrade_tag";
 /*
  * No quota upgrade triggering allowed.
  */
-static int dmu_objset_no_upgrades = 1;
+int dmu_objset_no_upgrades = 1;
 
 static void dmu_objset_find_dp_cb(void *arg);
 
@@ -1806,24 +1806,27 @@ dmu_get_file_info(objset_t *os, dmu_object_type_t bonustype, const void *data,
 boolean_t
 dmu_objset_userused_enabled(objset_t *os)
 {
-	return (spa_version(os->os_spa) >= SPA_VERSION_USERSPACE &&
+	return ((spa_version(os->os_spa) >= SPA_VERSION_USERSPACE &&
 	    file_cbs[os->os_phys->os_type] != NULL &&
-	    DMU_USERUSED_DNODE(os) != NULL);
+	    DMU_USERUSED_DNODE(os) != NULL) &&
+	    !(dmu_objset_no_upgrades));
 }
 
 boolean_t
 dmu_objset_userobjused_enabled(objset_t *os)
 {
-	return (dmu_objset_userused_enabled(os) &&
-	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_USEROBJ_ACCOUNTING));
+	return ((dmu_objset_userused_enabled(os) &&
+	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_USEROBJ_ACCOUNTING)) &&
+	    !(dmu_objset_no_upgrades));
 }
 
 boolean_t
 dmu_objset_projectquota_enabled(objset_t *os)
 {
-	return (file_cbs[os->os_phys->os_type] != NULL &&
+	return ((file_cbs[os->os_phys->os_type] != NULL &&
 	    DMU_PROJECTUSED_DNODE(os) != NULL &&
-	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_PROJECT_QUOTA));
+	    spa_feature_is_enabled(os->os_spa, SPA_FEATURE_PROJECT_QUOTA)) &&
+	    !(dmu_objset_no_upgrades));
 }
 
 typedef struct userquota_node {

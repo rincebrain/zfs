@@ -655,7 +655,8 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 			    DNODE_FLAG_USEROBJUSED_ACCOUNTED;
 		mutex_exit(&dn->dn_mtx);
 		dmu_objset_userquota_get_ids(dn, B_FALSE, tx);
-	} else if (!(os->os_encrypted && dmu_objset_is_receiving(os))) {
+	} else if (!(os->os_encrypted && dmu_objset_is_receiving(os)) &&
+	    !(dmu_objset_no_upgrades)) {
 		/*
 		 * Once we account for it, we should always account for it,
 		 * except for the case of a raw receive. We will not be able

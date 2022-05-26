@@ -262,6 +262,8 @@ void dmu_objset_willuse_space(objset_t *os, int64_t space, dmu_tx_t *tx);
 void dmu_objset_init(void);
 void dmu_objset_fini(void);
 
+extern int dmu_objset_no_upgrades;
+
 #ifdef	__cplusplus
 }
 #endif
