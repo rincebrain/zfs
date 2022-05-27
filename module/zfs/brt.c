@@ -94,7 +94,7 @@
  *
  * Minimizing free penalty.
  *
- * Block Cloning allows to clone any existing block. When we free a block there
+ * Block Cloning allows creating additional references to any existing block. When we free a block there
  * is no hint in the block pointer whether the block was cloned or not, so on
  * each free we have to check if there is a corresponding entry in the BRT or
  * not. If there is, we need to decrease the reference counter. Doing BRT
