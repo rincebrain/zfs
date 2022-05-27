@@ -100,7 +100,7 @@
  * not. If there is, we need to decrease the reference counter. Doing BRT
  * lookup on every free can potentially be expensive by requiring additional
  * I/Os if the BRT doesn't fit into memory. This is the main problem with
- * deduplication, so we've learn our lesson and try not to repeat the same
+ * deduplication, so we've learned our lesson and try not to repeat the same
  * mistake here. How do we do that? We divide each top-level VDEV into 1GB
  * regions. For each region we maintain a reference counter that is a sum of
  * all reference counters of the cloned blocks that have offsets within the
