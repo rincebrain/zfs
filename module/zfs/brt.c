@@ -68,7 +68,7 @@
  *   free, because we cannot modify the source BP (eg. by setting something
  *   similar to the D bit), thus we have no hint if the block is in the
  *   Block Reference Table (BRT), so we need to look into the BRT. There is
- *   an optimization in place that allows to eliminate majority of BRT lookups
+ *   an optimization in place that allows us to eliminate the majority of BRT lookups which is...
  *   that is described below in the "Minimizing free penalty" section.
  * - The BRT entry is much smaller than the DDT entry - for BRT we only store
  *   64bit offset and 64bit reference counter.
