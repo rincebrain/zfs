@@ -2267,6 +2267,10 @@ dsl_crypto_recv_raw_key_sync(dsl_dataset_t *ds, nvlist_t *nvl, dmu_tx_t *tx)
 		    SPA_FEATURE_ENCRYPTION, (void *)B_TRUE, tx);
 		ds->ds_feature[SPA_FEATURE_ENCRYPTION] = (void *)B_TRUE;
 
+		dsl_crypto_key_sync_impl(mos, dd->dd_crypto_obj, crypt,
+		    dd->dd_object, key_guid, iv, mac, keydata, hmac_keydata, keyformat,
+		    salt, iters, tx);
+
 		/* save the dd_crypto_obj on disk */
 		VERIFY0(zap_add(mos, dd->dd_object, DD_FIELD_CRYPTO_KEY_OBJ,
 		    sizeof (uint64_t), 1, &dd->dd_crypto_obj, tx));
