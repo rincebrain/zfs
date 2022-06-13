@@ -1725,7 +1725,9 @@ dbuf_read(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
 		 * Ensure that this block's dnode has been decrypted if
 		 * the caller has requested decrypted data.
 		 */
+		rw_enter(&db->db_rwlock, RW_WRITER);
 		err = dbuf_read_verify_dnode_crypt(db, flags);
+		rw_exit(&db->db_rwlock);
 
 		/*
 		 * If the arc buf is compressed or encrypted and the caller
