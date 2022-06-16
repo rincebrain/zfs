@@ -403,6 +403,7 @@ zfsctl_snapshot_unmount_delay_impl(zfs_snapentry_t *se, int delay)
          */
         if (se->se_taskqid != TASKQID_INVALID) {
                rw_exit(&se->se_taskqid_lock);
+               zfsctl_snapshot_rele(se);
                return;
        }
         se->se_taskqid = taskq_dispatch_delay(system_delay_taskq,
