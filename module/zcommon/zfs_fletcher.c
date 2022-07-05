@@ -301,35 +301,34 @@ fletcher_2_byteswap(const void *buf, uint64_t size,
 }
 
 __attribute__((optimize("no-tree-vectorize")))
-ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_init(fletcher_4_ctx_t *ctx)
 {
-	ZIO_SET_CHECKSUM(&ctx->scalar, 0, 0, 0, 0);
+	ZIO_SET_CHECKSUM((zio_cksum_t *)ctx, 0, 0, 0, 0);
 }
 
 __attribute__((optimize("no-tree-vectorize")))
-ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
 {
-	memcpy(zcp, &ctx->scalar, sizeof (zio_cksum_t));
+	memcpy(zcp, (zio_cksum_t *)ctx, sizeof (zio_cksum_t));
 }
 
 __attribute__((optimize("no-tree-vectorize")))
-ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
 {
+	zio_cksum_t *zcp = (zio_cksum_t *)ctx;
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
 
-	a = ctx->scalar.zc_word[0];
-	b = ctx->scalar.zc_word[1];
-	c = ctx->scalar.zc_word[2];
-	d = ctx->scalar.zc_word[3];
+	a = zcp->zc_word[0];
+	b = zcp->zc_word[1];
+	c = zcp->zc_word[2];
+	d = zcp->zc_word[3];
 
 	for (; ip < ipend; ip++) {
 		a += ip[0];
@@ -338,23 +337,24 @@ fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
 		d += c;
 	}
 
-	ZIO_SET_CHECKSUM(&ctx->scalar, a, b, c, d);
+	ZIO_SET_CHECKSUM(zcp, a, b, c, d);
 }
 
 __attribute__((optimize("no-tree-vectorize")))
-ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_byteswap(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
 {
+	zio_cksum_t *zcp = (zio_cksum_t *)ctx;
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
 
-	a = ctx->scalar.zc_word[0];
-	b = ctx->scalar.zc_word[1];
-	c = ctx->scalar.zc_word[2];
-	d = ctx->scalar.zc_word[3];
+	a = zcp->zc_word[0];
+	b = zcp->zc_word[1];
+	c = zcp->zc_word[2];
+	d = zcp->zc_word[3];
 
 	for (; ip < ipend; ip++) {
 		a += BSWAP_32(ip[0]);
@@ -363,7 +363,7 @@ fletcher_4_scalar_byteswap(fletcher_4_ctx_t *ctx, const void *buf,
 		d += c;
 	}
 
-	ZIO_SET_CHECKSUM(&ctx->scalar, a, b, c, d);
+	ZIO_SET_CHECKSUM(zcp, a, b, c, d);
 }
 
 static boolean_t
