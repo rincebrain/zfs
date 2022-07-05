@@ -300,6 +300,7 @@ fletcher_2_byteswap(const void *buf, uint64_t size,
 	(void) fletcher_2_incremental_byteswap((void *) buf, size, zcp);
 }
 
+__attribute__((optimize("no-tree-vectorize")))
 ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_init(fletcher_4_ctx_t *ctx)
@@ -307,6 +308,7 @@ fletcher_4_scalar_init(fletcher_4_ctx_t *ctx)
 	ZIO_SET_CHECKSUM(&ctx->scalar, 0, 0, 0, 0);
 }
 
+__attribute__((optimize("no-tree-vectorize")))
 ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
@@ -314,6 +316,7 @@ fletcher_4_scalar_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
 	memcpy(zcp, &ctx->scalar, sizeof (zio_cksum_t));
 }
 
+__attribute__((optimize("no-tree-vectorize")))
 ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
@@ -338,6 +341,7 @@ fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
 	ZIO_SET_CHECKSUM(&ctx->scalar, a, b, c, d);
 }
 
+__attribute__((optimize("no-tree-vectorize")))
 ZFS_NO_SANITIZE_UNDEFINED
 static void
 fletcher_4_scalar_byteswap(fletcher_4_ctx_t *ctx, const void *buf,
@@ -810,6 +814,7 @@ fletcher_4_fini(void)
 
 /* ABD adapters */
 
+__attribute__((optimize("no-tree-vectorize")))
 static void
 abd_fletcher_4_init(zio_abd_checksum_data_t *cdp)
 {
@@ -822,6 +827,7 @@ abd_fletcher_4_init(zio_abd_checksum_data_t *cdp)
 		ops->init_byteswap(cdp->acd_ctx);
 }
 
+__attribute__((optimize("no-tree-vectorize")))
 static void
 abd_fletcher_4_fini(zio_abd_checksum_data_t *cdp)
 {
