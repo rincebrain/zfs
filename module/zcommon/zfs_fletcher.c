@@ -300,21 +300,33 @@ fletcher_2_byteswap(const void *buf, uint64_t size,
 	(void) fletcher_2_incremental_byteswap((void *) buf, size, zcp);
 }
 
+#if defined(__GNUC__)
 __attribute__((optimize("no-tree-vectorize")))
+#elif defined(__clang__)
+__attribute__((optnone))
+#endif
 static void
 fletcher_4_scalar_init(fletcher_4_ctx_t *ctx)
 {
 	ZIO_SET_CHECKSUM((zio_cksum_t *)ctx, 0, 0, 0, 0);
 }
 
+#if defined(__GNUC__)
 __attribute__((optimize("no-tree-vectorize")))
+#elif defined(__clang__)
+__attribute__((optnone))
+#endif
 static void
 fletcher_4_scalar_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
 {
 	memcpy(zcp, (zio_cksum_t *)ctx, sizeof (zio_cksum_t));
 }
 
+#if defined(__GNUC__)
 __attribute__((optimize("no-tree-vectorize")))
+#elif defined(__clang__)
+__attribute__((optnone))
+#endif
 static void
 fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
@@ -340,7 +352,11 @@ fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
 	ZIO_SET_CHECKSUM(zcp, a, b, c, d);
 }
 
+#if defined(__GNUC__)
 __attribute__((optimize("no-tree-vectorize")))
+#elif defined(__clang__)
+__attribute__((optnone))
+#endif
 static void
 fletcher_4_scalar_byteswap(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
