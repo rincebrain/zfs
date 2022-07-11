@@ -31,6 +31,10 @@
 
 #include <sys/types.h>
 #include <sys/spa_checksum.h>
+/*
+ * Needed for offsetof
+ */
+#include <sys/zfs_context.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -110,6 +114,23 @@ typedef union fletcher_4_ctx {
 #endif
 } fletcher_4_ctx_t;
 
+
+/*
+ * We assume in a few places that we can happily cast a
+ * zio_cksum_t * into a fletcher_4_ctx_t * and back, and have
+ * the bits wind up in the same place.
+ *
+ * If you do this, be sure you've explicitly cast to the least
+ * aligned of the two, or you may find the compiler surprises you
+ * one day with aligned access instructions.
+ *
+ * Same statement with zfs_fletcher_superscalar_t *.
+ */
+_Static_assert(offsetof(fletcher_4_ctx_t, scalar) == 0,
+	"zio_cksum_t scalar field must be aligned to the start");
+_Static_assert(offsetof(fletcher_4_ctx_t, superscalar) == 0,
+	"zio_cksum_t superscalar field must be aligned to the start");
+
 /*
  * fletcher checksum struct
  */
@@ -159,21 +180,5 @@ _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_aarch64_neon_ops;
 #ifdef	__cplusplus
 }
 #endif
-
-#if	defined(ZFS_UBSAN_ENABLED)
-#if	defined(__has_attribute)
-#if	__has_attribute(no_sanitize_undefined)
-#define	ZFS_NO_SANITIZE_UNDEFINED __attribute__((no_sanitize_undefined))
-#elif	__has_attribute(no_sanitize)
-#define	ZFS_NO_SANITIZE_UNDEFINED __attribute__((no_sanitize("undefined")))
-#else
-#error	"Compiler has to support attribute "
-	"`no_sanitize_undefined` or `no_sanitize(\"undefined\")`"
-	"when compiling with UBSan enabled"
-#endif	/* __has_attribute(no_sanitize_undefined) */
-#endif	/* defined(__has_attribute) */
-#else
-#define	ZFS_NO_SANITIZE_UNDEFINED
-#endif	/* defined(ZFS_UBSAN_ENABLED) */
 
 #endif	/* _ZFS_FLETCHER_H */

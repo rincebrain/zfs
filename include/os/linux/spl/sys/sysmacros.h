@@ -159,6 +159,17 @@ extern void spl_cleanup(void);
 #define	P2BOUNDARY(off, len, align) \
 				(((off) ^ ((off) + (len) - 1)) > (align) - 1)
 
+#define	VERIFYP2ALIGN(V, A)	do {				\
+		const uint64_t _verify3_left = (uint64_t)(V);	\
+		const uint64_t _verify3_right = (uint64_t)(A);	\
+		if (unlikely(!IS_P2ALIGNED(V, A)))	\
+		    spl_panic(__FILE__, __FUNCTION__, __LINE__,		\
+		    "VERIFYP2ALIGN(" #V " , "  #A ") "		\
+		    "failed (%llu,%llu)\n",			\
+		    (unsigned long long)(_verify3_left),		\
+		    (unsigned long long)(_verify3_right));		\
+	} while (0)
+
 /*
  * Typed version of the P2* macros.  These macros should be used to ensure
  * that the result is correctly calculated based on the data type of (x),

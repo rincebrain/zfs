@@ -64,6 +64,18 @@
 #define	ISP2(x)			(((x) & ((x) - 1)) == 0)
 #define	IS_P2ALIGNED(v, a)	((((uintptr_t)(v)) & ((uintptr_t)(a) - 1)) == 0)
 
+#define	VERIFYP2ALIGN(V, A)	do {				\
+		const uint64_t _verify3_left = (uint64_t)(V);	\
+		const uint64_t _verify3_right = (uint64_t)(A);	\
+		if (unlikely(!IS_P2ALIGNED(V, A)))	\
+		    libspl_assertf(__FILE__, __FUNCTION__, __LINE__,	\
+		    "VERIFYP2ALIGN(" #V " , "  #A ") "		\
+		    "failed (%llu,%llu)\n",			\
+		    (unsigned long long)(_verify3_left),		\
+		    (unsigned long long)(_verify3_right));		\
+	} while (0)
+
+
 /*
  * Typed version of the P2* macros.  These macros should be used to ensure
  * that the result is correctly calculated based on the data type of (x),
