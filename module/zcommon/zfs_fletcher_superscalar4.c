@@ -45,50 +45,61 @@
 #include <sys/byteorder.h>
 #include <sys/spa_checksum.h>
 #include <sys/string.h>
+#include <sys/zfs_context.h>
 #include <zfs_fletcher.h>
 
-ZFS_NO_SANITIZE_UNDEFINED
-static void
+/*
+ * See the large block comment in zfs_fletcher.c for an explanation of
+ * the explicit casts strategically placed below;
+ * zfs_fletcher_superscalar_t has a similar lack of alignment
+ * requirement to zio_cksum_t.
+ */
+
+novector static void
 fletcher_4_superscalar4_init(fletcher_4_ctx_t *ctx)
 {
-	memset(ctx->superscalar, 0, 4 * sizeof (zfs_fletcher_superscalar_t));
+	memset((zfs_fletcher_superscalar_t *)ctx->superscalar, 0,
+	    4 * sizeof (zfs_fletcher_superscalar_t));
 }
 
-ZFS_NO_SANITIZE_UNDEFINED
-static void
+novector static void
 fletcher_4_superscalar4_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
 {
+	zfs_fletcher_superscalar_t *ss_ctx =
+	    (zfs_fletcher_superscalar_t *)ctx->superscalar;
 	uint64_t A, B, C, D;
 
-	A = ctx->superscalar[0].v[0] + ctx->superscalar[0].v[1] +
-	    ctx->superscalar[0].v[2] + ctx->superscalar[0].v[3];
-	B = 0 - ctx->superscalar[0].v[1] - 2 * ctx->superscalar[0].v[2] -
-	    3 * ctx->superscalar[0].v[3] + 4 * ctx->superscalar[1].v[0] +
-	    4 * ctx->superscalar[1].v[1] + 4 * ctx->superscalar[1].v[2] +
-	    4 * ctx->superscalar[1].v[3];
+	A = ss_ctx[0].v[0] + ss_ctx[0].v[1] +
+	    ss_ctx[0].v[2] + ss_ctx[0].v[3];
+	B = 0 - ss_ctx[0].v[1] - 2 * ss_ctx[0].v[2] -
+	    3 * ss_ctx[0].v[3] + 4 * ss_ctx[1].v[0] +
+	    4 * ss_ctx[1].v[1] + 4 * ss_ctx[1].v[2] +
+	    4 * ss_ctx[1].v[3];
 
-	C = ctx->superscalar[0].v[2] + 3 * ctx->superscalar[0].v[3] -
-	    6 * ctx->superscalar[1].v[0] - 10 * ctx->superscalar[1].v[1] -
-	    14 * ctx->superscalar[1].v[2] - 18 * ctx->superscalar[1].v[3] +
-	    16 * ctx->superscalar[2].v[0] + 16 * ctx->superscalar[2].v[1] +
-	    16 * ctx->superscalar[2].v[2] + 16 * ctx->superscalar[2].v[3];
+	C = ss_ctx[0].v[2] + 3 * ss_ctx[0].v[3] -
+	    6 * ss_ctx[1].v[0] - 10 * ss_ctx[1].v[1] -
+	    14 * ss_ctx[1].v[2] - 18 * ss_ctx[1].v[3] +
+	    16 * ss_ctx[2].v[0] + 16 * ss_ctx[2].v[1] +
+	    16 * ss_ctx[2].v[2] + 16 * ss_ctx[2].v[3];
 
-	D = 0 - ctx->superscalar[0].v[3] + 4 * ctx->superscalar[1].v[0] +
-	    10 * ctx->superscalar[1].v[1] + 20 * ctx->superscalar[1].v[2] +
-	    34 * ctx->superscalar[1].v[3] - 48 * ctx->superscalar[2].v[0] -
-	    64 * ctx->superscalar[2].v[1] - 80 * ctx->superscalar[2].v[2] -
-	    96 * ctx->superscalar[2].v[3] + 64 * ctx->superscalar[3].v[0] +
-	    64 * ctx->superscalar[3].v[1] + 64 * ctx->superscalar[3].v[2] +
-	    64 * ctx->superscalar[3].v[3];
+	D = 0 - ss_ctx[0].v[3] + 4 * ss_ctx[1].v[0] +
+	    10 * ss_ctx[1].v[1] + 20 * ss_ctx[1].v[2] +
+	    34 * ss_ctx[1].v[3] - 48 * ss_ctx[2].v[0] -
+	    64 * ss_ctx[2].v[1] - 80 * ss_ctx[2].v[2] -
+	    96 * ss_ctx[2].v[3] + 64 * ss_ctx[3].v[0] +
+	    64 * ss_ctx[3].v[1] + 64 * ss_ctx[3].v[2] +
+	    64 * ss_ctx[3].v[3];
 
 	ZIO_SET_CHECKSUM(zcp, A, B, C, D);
 }
 
-ZFS_NO_SANITIZE_UNDEFINED
-static void
+novector static void
 fletcher_4_superscalar4_native(fletcher_4_ctx_t *ctx,
     const void *buf, uint64_t size)
 {
+	zfs_fletcher_superscalar_t *ss_ctx =
+	    (zfs_fletcher_superscalar_t *)ctx->superscalar;
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
@@ -96,22 +107,22 @@ fletcher_4_superscalar4_native(fletcher_4_ctx_t *ctx,
 	uint64_t a3, b3, c3, d3;
 	uint64_t a4, b4, c4, d4;
 
-	a = ctx->superscalar[0].v[0];
-	b = ctx->superscalar[1].v[0];
-	c = ctx->superscalar[2].v[0];
-	d = ctx->superscalar[3].v[0];
-	a2 = ctx->superscalar[0].v[1];
-	b2 = ctx->superscalar[1].v[1];
-	c2 = ctx->superscalar[2].v[1];
-	d2 = ctx->superscalar[3].v[1];
-	a3 = ctx->superscalar[0].v[2];
-	b3 = ctx->superscalar[1].v[2];
-	c3 = ctx->superscalar[2].v[2];
-	d3 = ctx->superscalar[3].v[2];
-	a4 = ctx->superscalar[0].v[3];
-	b4 = ctx->superscalar[1].v[3];
-	c4 = ctx->superscalar[2].v[3];
-	d4 = ctx->superscalar[3].v[3];
+	a = ss_ctx[0].v[0];
+	b = ss_ctx[1].v[0];
+	c = ss_ctx[2].v[0];
+	d = ss_ctx[3].v[0];
+	a2 = ss_ctx[0].v[1];
+	b2 = ss_ctx[1].v[1];
+	c2 = ss_ctx[2].v[1];
+	d2 = ss_ctx[3].v[1];
+	a3 = ss_ctx[0].v[2];
+	b3 = ss_ctx[1].v[2];
+	c3 = ss_ctx[2].v[2];
+	d3 = ss_ctx[3].v[2];
+	a4 = ss_ctx[0].v[3];
+	b4 = ss_ctx[1].v[3];
+	c4 = ss_ctx[2].v[3];
+	d4 = ss_ctx[3].v[3];
 
 	for (; ip < ipend; ip += 4) {
 		a += ip[0];
@@ -132,29 +143,31 @@ fletcher_4_superscalar4_native(fletcher_4_ctx_t *ctx,
 		d4 += c4;
 	}
 
-	ctx->superscalar[0].v[0] = a;
-	ctx->superscalar[1].v[0] = b;
-	ctx->superscalar[2].v[0] = c;
-	ctx->superscalar[3].v[0] = d;
-	ctx->superscalar[0].v[1] = a2;
-	ctx->superscalar[1].v[1] = b2;
-	ctx->superscalar[2].v[1] = c2;
-	ctx->superscalar[3].v[1] = d2;
-	ctx->superscalar[0].v[2] = a3;
-	ctx->superscalar[1].v[2] = b3;
-	ctx->superscalar[2].v[2] = c3;
-	ctx->superscalar[3].v[2] = d3;
-	ctx->superscalar[0].v[3] = a4;
-	ctx->superscalar[1].v[3] = b4;
-	ctx->superscalar[2].v[3] = c4;
-	ctx->superscalar[3].v[3] = d4;
+	ss_ctx[0].v[0] = a;
+	ss_ctx[1].v[0] = b;
+	ss_ctx[2].v[0] = c;
+	ss_ctx[3].v[0] = d;
+	ss_ctx[0].v[1] = a2;
+	ss_ctx[1].v[1] = b2;
+	ss_ctx[2].v[1] = c2;
+	ss_ctx[3].v[1] = d2;
+	ss_ctx[0].v[2] = a3;
+	ss_ctx[1].v[2] = b3;
+	ss_ctx[2].v[2] = c3;
+	ss_ctx[3].v[2] = d3;
+	ss_ctx[0].v[3] = a4;
+	ss_ctx[1].v[3] = b4;
+	ss_ctx[2].v[3] = c4;
+	ss_ctx[3].v[3] = d4;
 }
 
-ZFS_NO_SANITIZE_UNDEFINED
-static void
+novector static void
 fletcher_4_superscalar4_byteswap(fletcher_4_ctx_t *ctx,
     const void *buf, uint64_t size)
 {
+	zfs_fletcher_superscalar_t *ss_ctx =
+	    (zfs_fletcher_superscalar_t *)ctx->superscalar;
+
 	const uint32_t *ip = buf;
 	const uint32_t *ipend = ip + (size / sizeof (uint32_t));
 	uint64_t a, b, c, d;
@@ -162,22 +175,22 @@ fletcher_4_superscalar4_byteswap(fletcher_4_ctx_t *ctx,
 	uint64_t a3, b3, c3, d3;
 	uint64_t a4, b4, c4, d4;
 
-	a = ctx->superscalar[0].v[0];
-	b = ctx->superscalar[1].v[0];
-	c = ctx->superscalar[2].v[0];
-	d = ctx->superscalar[3].v[0];
-	a2 = ctx->superscalar[0].v[1];
-	b2 = ctx->superscalar[1].v[1];
-	c2 = ctx->superscalar[2].v[1];
-	d2 = ctx->superscalar[3].v[1];
-	a3 = ctx->superscalar[0].v[2];
-	b3 = ctx->superscalar[1].v[2];
-	c3 = ctx->superscalar[2].v[2];
-	d3 = ctx->superscalar[3].v[2];
-	a4 = ctx->superscalar[0].v[3];
-	b4 = ctx->superscalar[1].v[3];
-	c4 = ctx->superscalar[2].v[3];
-	d4 = ctx->superscalar[3].v[3];
+	a = ss_ctx[0].v[0];
+	b = ss_ctx[1].v[0];
+	c = ss_ctx[2].v[0];
+	d = ss_ctx[3].v[0];
+	a2 = ss_ctx[0].v[1];
+	b2 = ss_ctx[1].v[1];
+	c2 = ss_ctx[2].v[1];
+	d2 = ss_ctx[3].v[1];
+	a3 = ss_ctx[0].v[2];
+	b3 = ss_ctx[1].v[2];
+	c3 = ss_ctx[2].v[2];
+	d3 = ss_ctx[3].v[2];
+	a4 = ss_ctx[0].v[3];
+	b4 = ss_ctx[1].v[3];
+	c4 = ss_ctx[2].v[3];
+	d4 = ss_ctx[3].v[3];
 
 	for (; ip < ipend; ip += 4) {
 		a += BSWAP_32(ip[0]);
@@ -198,22 +211,22 @@ fletcher_4_superscalar4_byteswap(fletcher_4_ctx_t *ctx,
 		d4 += c4;
 	}
 
-	ctx->superscalar[0].v[0] = a;
-	ctx->superscalar[1].v[0] = b;
-	ctx->superscalar[2].v[0] = c;
-	ctx->superscalar[3].v[0] = d;
-	ctx->superscalar[0].v[1] = a2;
-	ctx->superscalar[1].v[1] = b2;
-	ctx->superscalar[2].v[1] = c2;
-	ctx->superscalar[3].v[1] = d2;
-	ctx->superscalar[0].v[2] = a3;
-	ctx->superscalar[1].v[2] = b3;
-	ctx->superscalar[2].v[2] = c3;
-	ctx->superscalar[3].v[2] = d3;
-	ctx->superscalar[0].v[3] = a4;
-	ctx->superscalar[1].v[3] = b4;
-	ctx->superscalar[2].v[3] = c4;
-	ctx->superscalar[3].v[3] = d4;
+	ss_ctx[0].v[0] = a;
+	ss_ctx[1].v[0] = b;
+	ss_ctx[2].v[0] = c;
+	ss_ctx[3].v[0] = d;
+	ss_ctx[0].v[1] = a2;
+	ss_ctx[1].v[1] = b2;
+	ss_ctx[2].v[1] = c2;
+	ss_ctx[3].v[1] = d2;
+	ss_ctx[0].v[2] = a3;
+	ss_ctx[1].v[2] = b3;
+	ss_ctx[2].v[2] = c3;
+	ss_ctx[3].v[2] = d3;
+	ss_ctx[0].v[3] = a4;
+	ss_ctx[1].v[3] = b4;
+	ss_ctx[2].v[3] = c4;
+	ss_ctx[3].v[3] = d4;
 }
 
 static boolean_t fletcher_4_superscalar4_valid(void)

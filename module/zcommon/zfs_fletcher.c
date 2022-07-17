@@ -300,37 +300,52 @@ fletcher_2_byteswap(const void *buf, uint64_t size,
 	(void) fletcher_2_incremental_byteswap((void *) buf, size, zcp);
 }
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+/*
+ *  Below, we forcibly disable vectorization in the compiler, and explicitly
+ *  cast our input from a fletcher_4_ctx_t * to a zio_cksum_t *.
+ *
+ *  The former is because we would like at least one implementation that we
+ *  can trust to keep working even without any alignment properties or
+ *  if the SIMD infrastructure is on the fritz.
+ *
+ *  The latter is because fletcher_4_ctx_t, depending on the toolchain at
+ *  compile time, has alignment requirements, and when we call this
+ *  implementation, we often casually cast a zio_cksum_t * into a
+ *  fletcher_4_ctx_t *...
+ *
+ *  ...but zio_cksum_t * has no such alignment properties.
+ *
+ *  So it's UB to hand over something that violates that, and the compiler
+ *  is permitted to generate instructions that assume the alignment
+ *  properties are true. Casting over to zio_cksum_t * convinces the
+ *  compiler that no, actually, the thing we're passing around has no
+ *  alignment properties it can rely on.
+ *
+ *  (This also happens to mean if you did decide to enable vectorization
+ *  on these implementations, it would no longer crash from generating
+ *  alignment-requiring instructions on some systems.)
+ *
+ */
+
+novector static void
 fletcher_4_scalar_init(fletcher_4_ctx_t *ctx)
 {
+	/* See leading comment re: cast. */
 	ZIO_SET_CHECKSUM((zio_cksum_t *)ctx, 0, 0, 0, 0);
 }
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+novector static void
 fletcher_4_scalar_fini(fletcher_4_ctx_t *ctx, zio_cksum_t *zcp)
 {
+	/* See leading comment re: cast. */
 	memcpy(zcp, (zio_cksum_t *)ctx, sizeof (zio_cksum_t));
 }
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+novector static void
 fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
 {
+	/* See leading comment re: cast. */
 	zio_cksum_t *zcp = (zio_cksum_t *)ctx;
 
 	const uint32_t *ip = buf;
@@ -352,15 +367,11 @@ fletcher_4_scalar_native(fletcher_4_ctx_t *ctx, const void *buf,
 	ZIO_SET_CHECKSUM(zcp, a, b, c, d);
 }
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+novector static void
 fletcher_4_scalar_byteswap(fletcher_4_ctx_t *ctx, const void *buf,
     uint64_t size)
 {
+	/* See leading comment re: cast. */
 	zio_cksum_t *zcp = (zio_cksum_t *)ctx;
 
 	const uint32_t *ip = buf;
@@ -830,12 +841,7 @@ fletcher_4_fini(void)
 
 /* ABD adapters */
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+novector static void
 abd_fletcher_4_init(zio_abd_checksum_data_t *cdp)
 {
 	const fletcher_4_ops_t *ops = fletcher_4_impl_get();
@@ -847,12 +853,7 @@ abd_fletcher_4_init(zio_abd_checksum_data_t *cdp)
 		ops->init_byteswap(cdp->acd_ctx);
 }
 
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((optimize("no-tree-vectorize")))
-#elif defined(__clang__)
-__attribute__((optnone))
-#endif
-static void
+novector static void
 abd_fletcher_4_fini(zio_abd_checksum_data_t *cdp)
 {
 	fletcher_4_ops_t *ops = (fletcher_4_ops_t *)cdp->acd_private;
