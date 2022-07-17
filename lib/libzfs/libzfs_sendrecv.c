@@ -2060,12 +2060,12 @@ send_prelim_records(zfs_handle_t *zhp, const char *from, int fd,
 	int err = 0;
 	char *packbuf = NULL;
 	size_t buflen = 0;
-	zio_cksum_t *zc = calloc(sizeof (zio_cksum_t), 1);
+	zio_cksum_t zc = { {0} };
 	int featureflags = 0;
 	/* name of filesystem/volume that contains snapshot we are sending */
 	char tofs[ZFS_MAX_DATASET_NAME_LEN];
 	/* short name of snap we are sending */
-	const char *tosnap = "";
+	char *tosnap = "";
 
 	char errbuf[ERRBUFLEN];
 	(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
@@ -2102,7 +2102,6 @@ send_prelim_records(zfs_handle_t *zhp, const char *from, int fd,
 		if ((err = gather_nvlist(zhp->zfs_hdl, tofs,
 		    from, tosnap, recursive, raw, doall, replicate, skipmissing,
 		    verbose, backup, holds, props, &fss, fsavlp)) != 0) {
-			free(zc);
 			return (zfs_error(zhp->zfs_hdl, EZFS_BADBACKUP,
 			    errbuf));
 		}
@@ -2118,7 +2117,6 @@ send_prelim_records(zfs_handle_t *zhp, const char *from, int fd,
 			    "is too large to be received successfully.\n"
 			    "Select a smaller number of snapshots to send.\n"),
 			    zhp->zfs_name);
-			free(zc);
 			return (zfs_error(zhp->zfs_hdl, EZFS_NOSPC,
 			    errbuf));
 		}
@@ -2145,24 +2143,21 @@ send_prelim_records(zfs_handle_t *zhp, const char *from, int fd,
 		if (snprintf(drr.drr_u.drr_begin.drr_toname,
 		    sizeof (drr.drr_u.drr_begin.drr_toname), "%s@%s", tofs,
 		    tosnap) >= sizeof (drr.drr_u.drr_begin.drr_toname)) {
-			free(zc);
 			return (zfs_error(zhp->zfs_hdl, EZFS_BADBACKUP,
 			    errbuf));
 		}
 		drr.drr_payloadlen = buflen;
 
-		err = dump_record(&drr, packbuf, buflen, zc, fd);
+		err = dump_record(&drr, packbuf, buflen, &zc, fd);
 		free(packbuf);
 		if (err != 0) {
 			zfs_error_aux(zhp->zfs_hdl, "%s", strerror(err));
-			free(zc);
 			return (zfs_error(zhp->zfs_hdl, EZFS_BADBACKUP,
 			    errbuf));
 		}
-		err = send_conclusion_record(fd, zc);
+		err = send_conclusion_record(fd, &zc);
 		if (err != 0) {
 			zfs_error_aux(zhp->zfs_hdl, "%s", strerror(err));
-			free(zc);
 			return (zfs_error(zhp->zfs_hdl, EZFS_BADBACKUP,
 			    errbuf));
 		}
