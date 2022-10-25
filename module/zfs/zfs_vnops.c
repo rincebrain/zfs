@@ -1079,8 +1079,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	 * so we need a dedicated function for that.
 	 */
 	error = zfs_enter_two(srczfsvfs, dstzfsvfs);
-	if (error != 0)
+	if (error != 0) {
+		zfs_dbgmsg("enter_two: %d", error);
 		return (error);
+	}
 
 	ASSERT(!dstzfsvfs->z_replay);
 
@@ -1093,6 +1095,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	if (error == 0)
 		error = zfs_verify_zp(dstzp);
 	if (error != 0) {
+		zfs_dbgmsg("verify_zp: %d", error);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (error);
 	}
@@ -1122,10 +1125,12 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	}
 
 	if (srcoffset >= srczp->z_size) {
+		zfs_dbgmsg("z_size: %llu %llu", srcoffset, srczp->z_size);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (0);
 	}
 	if (length == 0) {
+		zfs_dbgmsg("length 0");
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (0);
 	}
@@ -1212,7 +1217,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		return (SET_ERROR(EINVAL));
 	}
 	/*
-	 * Length may not be multipe of blksz only at the end of the file.
+	 * Length may not be multiple of blksz only at the end of the file.
 	 */
 	if ((length % srcblksz) != 0 && length != srczp->z_size - srcoffset) {
 		zfs_rangelock_exit(srclr);
@@ -1223,6 +1228,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 
 	error = zn_rlimit_fsize(dstoffset + length);
 	if (error != 0) {
+		zfs_dbgmsg("err: zn_rlimit_fsize %d", error);
 		zfs_rangelock_exit(srclr);
 		zfs_rangelock_exit(dstlr);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
@@ -1278,6 +1284,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		error = dmu_brt_readbps(srczfsvfs->z_os, srczp->z_id, srcoffset,
 		    size, tx, &bps, &nbps);
 		if (error != 0) {
+			zfs_dbgmsg("dmu_brt_readbps: %d", error);
 			dmu_tx_abort(tx);
 			break;
 		}
@@ -1306,6 +1313,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 		zfs_sa_upgrade_txholds(tx, dstzp);
 		error = dmu_tx_assign(tx, TXG_WAIT);
 		if (error != 0) {
+			zfs_dbgmsg("dmu_tx_assign: %d", error);
 			dmu_tx_abort(tx);
 			kmem_free(bps, sizeof (bps[0]) * nbps);
 			break;
@@ -1346,8 +1354,10 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 
 		kmem_free(bps, sizeof (bps[0]) * nbps);
 
-		if (error != 0)
+		if (error != 0) {
+			zfs_dbgmsg("sa_bulk_update: %d", error);
 			break;
+		}
 
 		srcoffset += size;
 		dstoffset += size;
@@ -1364,6 +1374,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	 * Otherwise, it's at least a partial write, so it's successful.
 	 */
 	if (*donep == 0) {
+		zfs_dbgmsg("donep 0: %d", error);
 		zfs_exit_two(srczfsvfs, dstzfsvfs);
 		return (error);
 	}
@@ -1380,6 +1391,7 @@ zfs_clone_range(znode_t *srczp, uint64_t srcoffset, uint64_t length,
 	ZFS_ACCESSTIME_STAMP(srczfsvfs, srczp);
 	zfs_exit_two(srczfsvfs, dstzfsvfs);
 
+	zfs_dbgmsg("clone finished successfully, in theory (%d)", error);
 	return (0);
 }
 

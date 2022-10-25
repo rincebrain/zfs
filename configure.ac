@@ -69,6 +69,7 @@ AC_CONFIG_FILES([
 	cmd/Makefile
 	cmd/arc_summary/Makefile
 	cmd/arcstat/Makefile
+	cmd/clonefile/Makefile
 	cmd/dbufstat/Makefile
 	cmd/fsck_zfs/Makefile
 	cmd/mount_zfs/Makefile

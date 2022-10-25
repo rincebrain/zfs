@@ -90,6 +90,13 @@ zpl_chmod_acl(struct inode *ip)
 	return (0);
 }
 #endif /* CONFIG_FS_POSIX_ACL */
+extern ssize_t zpl_copy_range(struct file * srcf, loff_t off_in, struct file * dstf,
+                 loff_t off_out, size_t len, unsigned int flags);
+
+extern loff_t
+zpl_remap_range(struct file *file_in, loff_t pos_in,
+    struct file *file_out, loff_t pos_out, loff_t len,
+    unsigned int remap_flags);
 
 extern xattr_handler_t *zpl_xattr_handlers[];
 

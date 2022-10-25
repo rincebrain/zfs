@@ -2,7 +2,7 @@ include $(top_srcdir)/config/Shellcheck.am
 
 SUBDIRS  = zfs zpool zdb zhack zinject zstream ztest
 SUBDIRS += fsck_zfs vdev_id raidz_test zfs_ids_to_path
-SUBDIRS += zpool_influxdb
+SUBDIRS += zpool_influxdb clonefile
 
 CPPCHECKDIRS  = zfs zpool zdb zhack zinject zstream ztest
 CPPCHECKDIRS += raidz_test zfs_ids_to_path zpool_influxdb
@@ -18,6 +18,8 @@ if BUILD_LINUX
 SUBDIRS += mount_zfs zed zgenhostid zvol_id zvol_wait
 CPPCHECKDIRS += mount_zfs zed zgenhostid zvol_id
 SHELLCHECKDIRS += zed
+else
+SUBDIRS += clonefile
 endif
 
 PHONY = cppcheck

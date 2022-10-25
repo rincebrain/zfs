@@ -56,6 +56,7 @@ _LIBZFS_CORE_H int lzc_snapshot(nvlist_t *, nvlist_t *, nvlist_t **);
 _LIBZFS_CORE_H int lzc_create(const char *, enum lzc_dataset_type, nvlist_t *,
     uint8_t *, uint_t);
 _LIBZFS_CORE_H int lzc_clone(const char *, const char *, nvlist_t *);
+_LIBZFS_CORE_H int lzc_clonefile(const char* srcpath, const char* dstpath, uint64_t src_off, uint64_t dst_off, uint64_t len);
 _LIBZFS_CORE_H int lzc_promote(const char *, char *, int);
 _LIBZFS_CORE_H int lzc_destroy_snaps(nvlist_t *, boolean_t, nvlist_t **);
 _LIBZFS_CORE_H int lzc_bookmark(nvlist_t *, nvlist_t **);

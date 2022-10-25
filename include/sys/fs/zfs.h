@@ -1440,6 +1440,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_WAIT_FS,			/* 0x5a54 */
 	ZFS_IOC_VDEV_GET_PROPS,			/* 0x5a55 */
 	ZFS_IOC_VDEV_SET_PROPS,			/* 0x5a56 */
+	ZFS_IOC_FCLONEFILE,			/* 0x5a57 */
 
 	/*
 	 * Per-platform (Optional) - 8/128 numbers reserved.
