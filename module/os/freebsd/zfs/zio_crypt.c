@@ -186,6 +186,7 @@
 #define	ZFS_CURRENT_MAX_SALT_USES	\
 	(MIN(zfs_key_max_salt_uses, ZFS_KEY_MAX_SALT_USES_DEFAULT))
 static unsigned long zfs_key_max_salt_uses = ZFS_KEY_MAX_SALT_USES_DEFAULT;
+static unsigned int zfs_crypt_pitch_quota_data = 1;
 
 typedef struct blkptr_auth_buf {
 	uint64_t bab_prop;			/* blk_prop - portable mask */

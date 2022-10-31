@@ -187,6 +187,7 @@
 #define	ZFS_CURRENT_MAX_SALT_USES	\
 	(MIN(zfs_key_max_salt_uses, ZFS_KEY_MAX_SALT_USES_DEFAULT))
 static unsigned long zfs_key_max_salt_uses = ZFS_KEY_MAX_SALT_USES_DEFAULT;
+static unsigned int zfs_crypt_pitch_quota_data = 1;
 
 typedef struct blkptr_auth_buf {
 	uint64_t bab_prop;			/* blk_prop - portable mask */
@@ -1226,8 +1227,18 @@ zio_crypt_do_objset_hmacs(zio_crypt_key_t *key, void *data, uint_t datalen,
 	/* calculate the local MAC from the userused and groupused dnodes */
 	ret = crypto_mac_init(&mech, &key->zk_hmac_key, NULL, &ctx);
 	if (ret != CRYPTO_SUCCESS) {
-		ret = SET_ERROR(EIO);
-		goto error;
+		if (zfs_crypt_pitch_quota_data) {
+			/* who cares, throw it out, try again. */
+			zfs_dbgmsg("Throwing out the quota MAC+data because we got"
+			" %d back from crypto_mac_init, we can just "
+			"recalculate it...", ret);
+			memset(local_mac, 0, ZIO_OBJSET_MAC_LEN);
+			return (0);
+		}
+		else {
+			ret = SET_ERROR(EIO);
+			goto error;
+		}
 	}
 
 	/* add in the non-portable os_flags */
@@ -2044,4 +2055,7 @@ error:
 module_param(zfs_key_max_salt_uses, ulong, 0644);
 MODULE_PARM_DESC(zfs_key_max_salt_uses, "Max number of times a salt value "
 	"can be used for generating encryption keys before it is rotated");
+module_param(zfs_crypt_pitch_quota_data, uint, 0644);
+MODULE_PARM_DESC(zfs_crypt_pitch_quota_data, "Do we attempt to just throw out "
+	"existing quota accounting data if decryption fails?");
 #endif
