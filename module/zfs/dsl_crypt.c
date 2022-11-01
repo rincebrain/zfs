@@ -2671,6 +2671,7 @@ spa_do_crypt_objset_mac_abd(boolean_t generate, spa_t *spa, uint64_t dsobj,
 	objset_phys_t *osp = buf;
 	uint8_t portable_mac[ZIO_OBJSET_MAC_LEN];
 	uint8_t local_mac[ZIO_OBJSET_MAC_LEN];
+	uint8_t zeroed_mac[ZIO_OBJSET_MAC_LEN] = {0};
 
 	/* look up the key from the spa's keystore */
 	ret = spa_keystore_lookup_key(spa, dsobj, FTAG, &dck);
@@ -2696,8 +2697,10 @@ spa_do_crypt_objset_mac_abd(boolean_t generate, spa_t *spa, uint64_t dsobj,
 	if (memcmp(portable_mac, osp->os_portable_mac,
 	    ZIO_OBJSET_MAC_LEN) != 0 ||
 	    memcmp(local_mac, osp->os_local_mac, ZIO_OBJSET_MAC_LEN) != 0) {
-		abd_return_buf(abd, buf, datalen);
-		return (SET_ERROR(ECKSUM));
+		if (!memcmp(local_mac, zeroed_mac, ZIO_OBJSET_MAC_LEN) == 0) {
+			abd_return_buf(abd, buf, datalen);
+			return (SET_ERROR(ECKSUM));
+		}
 	}
 
 	abd_return_buf(abd, buf, datalen);
