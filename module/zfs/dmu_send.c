@@ -489,9 +489,12 @@ dmu_dump_write(dmu_send_cookie_t *dscp, dmu_object_type_t type, uint64_t object,
 	drrw->drr_logical_size = lsize;
 
 	/* only set the compression fields if the buf is compressed or raw */
+	/* Note that checking lsize != psize is incorrect, because with
+	   send -c, we might be storing something compressed that does
+	   not save space now. */
 	boolean_t compressed =
 	    (bp != NULL ? BP_GET_COMPRESS(bp) != ZIO_COMPRESS_OFF &&
-	    io_compressed : lsize != psize);
+	    io_compressed : B_TRUE);
 	if (raw || compressed) {
 		ASSERT(raw || dscp->dsc_featureflags &
 		    DMU_BACKUP_FEATURE_COMPRESSED);
