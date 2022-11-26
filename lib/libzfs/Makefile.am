@@ -54,16 +54,42 @@ KERNEL_C = \
 	zfs_deleg.c \
 	zfs_fletcher.c \
 	zfs_fletcher_aarch64_neon.c \
+	zfs_fletcher_aarch64_neon_unsafe.c \
 	zfs_fletcher_avx512.c \
 	zfs_fletcher_intel.c \
+	zfs_fletcher_intel_comedy.c \
 	zfs_fletcher_intel_intrin.c \
 	zfs_fletcher_sse.c \
+	zfs_fletcher_sse_intrin.c \
+	zfs_fletcher_sse_intrin_unsafe.c \
 	zfs_fletcher_superscalar.c \
 	zfs_fletcher_superscalar4.c \
+	zfs_fletcher_superscalar4_simd.c \
 	zfs_namecheck.c \
 	zfs_prop.c \
 	zpool_prop.c \
 	zprop_common.c
+
+zfs_fletcher_superscalar4_simd.$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math -DSIMD_MOED=1
+zfs_fletcher_superscalar4_simd.l$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math -DSIMD_MOED=1
+
+zfs_fletcher_sse_intrin_unsafe.$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math
+zfs_fletcher_sse_intrin_unsafe.l$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math
+
+zfs_fletcher_intel_intrin.$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math
+zfs_fletcher_intel_intrin.l$(OBJEXT): CFLAGS += -march=native -mtune=native -ffast-math
+
+if TARGET_CPU_AARCH64
+zfs_fletcher.$(OBJEXT): CFLAGS += -DSIMD_MOED=1 -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES -DZFS_SSE2_INTRIN
+zfs_fletcher.l$(OBJEXT): CFLAGS += -DSIMD_MOED=1 -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES -DZFS_SSE2_INTRIN
+zfs_fletcher_sse_intrin.$(OBJEXT): CFLAGS += -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES 
+zfs_fletcher_sse_intrin.l$(OBJEXT): CFLAGS += -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES
+zfs_fletcher_sse_intrin_unsafe.$(OBJEXT): CFLAGS += -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES -march=native -mtune=native -ffast-math
+zfs_fletcher_sse_intrin_unsafe.l$(OBJEXT): CFLAGS += -DHAVE_SSE2 -I/home/rich/simde/simde/x86/ -I/home/rich/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES -march=native -mtune=native -ffast-math
+else
+zfs_fletcher.$(OBJEXT): CFLAGS += -DSIMD_MOED=1
+zfs_fletcher.l$(OBJEXT): CFLAGS += -DSIMD_MOED=1
+endif
 
 dist_libzfs_la_SOURCES = \
 	$(USER_C)

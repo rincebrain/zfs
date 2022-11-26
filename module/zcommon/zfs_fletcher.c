@@ -138,6 +138,13 @@
 #include <sys/byteorder.h>
 #include <sys/spa.h>
 #include <sys/simd.h>
+#if defined(ZFS_SSE2_INTRIN) && defined(SIMDE_ENABLE_NATIVE_ALIASES)
+#undef fallthrough
+#undef noinline
+#include <sys/types.h>
+#define _GCC_WRAP_STDINT_H
+#include "sse2.h"
+#endif
 #include <sys/zio_checksum.h>
 #include <sys/zfs_context.h>
 #include <zfs_fletcher.h>
@@ -172,14 +179,22 @@ static const fletcher_4_ops_t *fletcher_4_impls[] = {
 	&fletcher_4_scalar_ops,
 	&fletcher_4_superscalar_ops,
 	&fletcher_4_superscalar4_ops,
+//	&fletcher_4_superscalar4_simd_ops,
 #if defined(HAVE_SSE2)
+#if defined(__x86__)
 	&fletcher_4_sse2_ops,
+#endif
+#if defined(ZFS_SSE2_INTRIN)
+	&fletcher_4_sse2_intrin_ops,
+#endif
 #endif
 #if defined(HAVE_SSE2) && defined(HAVE_SSSE3)
 	&fletcher_4_ssse3_ops,
+	&fletcher_4_ssse3_intrin_ops,
 #endif
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 	&fletcher_4_avx2_ops,
+	&fletcher_4_avx2_comedy_ops,
 	&fletcher_4_avx2_intrin_ops,
 #endif
 #if defined(__x86_64) && defined(HAVE_AVX512F)

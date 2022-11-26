@@ -42,8 +42,9 @@
 
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 
-#define ZFS_INTRIN 1
+#define ZFS_AVX2_INTRIN 1
 #define _MM_MALLOC_H_INCLUDED
+#define __MM_MALLOC_H
 #include <sys/spa_checksum.h>
 #include <sys/simd.h>
 #include <sys/strings.h>
@@ -99,10 +100,10 @@ fletcher_4_avx2_intrin_native(fletcher_4_ctx_t *ctx, const void *buf, uint64_t s
 	__m256i tmp = {0};
 	__m256i regs[4] = {0};
 
-	regs[0] = _mm256_loadu_si256(&ctx->avxi[0]);
-	regs[1] = _mm256_loadu_si256(&ctx->avxi[1]);
-	regs[2] = _mm256_loadu_si256(&ctx->avxi[2]);
-	regs[3] = _mm256_loadu_si256(&ctx->avxi[3]);
+	regs[0] = ctx->avxi[0];
+	regs[1] = ctx->avxi[1];
+	regs[2] = ctx->avxi[2];
+	regs[3] = ctx->avxi[3];
 
 	for (; ip < ipend; ip += 2) {
 		tmp = _mm256_cvtepu32_epi64(*(__m128i*)ip);
@@ -111,7 +112,6 @@ fletcher_4_avx2_intrin_native(fletcher_4_ctx_t *ctx, const void *buf, uint64_t s
 		regs[2] = _mm256_add_epi64(regs[1], regs[2]);
 		regs[3] = _mm256_add_epi64(regs[2], regs[3]);
 	}
-
 	ctx->avxi[0] = regs[0];
 	ctx->avxi[1] = regs[1];
 	ctx->avxi[2] = regs[2];

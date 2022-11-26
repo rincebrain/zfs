@@ -98,10 +98,13 @@ typedef union fletcher_4_ctx {
 
 #if defined(HAVE_SSE2) || (defined(HAVE_SSE2) && defined(HAVE_SSSE3))
 	zfs_fletcher_sse_t sse[4];
+#if defined(ZFS_SSE2_INTRIN)
+	__m128i ssei[4];
+#endif
 #endif
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 	zfs_fletcher_avx_t avx[4];
-#if defined(ZFS_INTRIN)
+#if defined(ZFS_AVX2_INTRIN)
 	__m256i_u avxi[4];
 #endif
 #endif
@@ -135,16 +138,25 @@ typedef struct fletcher_4_func {
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar_ops;
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar4_ops;
 
+//_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_superscalar4_simd_ops;
+
 #if defined(HAVE_SSE2)
+#if defined(__x86__)
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_sse2_ops;
+#endif
+#if defined(ZFS_SSE2_INTRIN)
+_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_sse2_intrin_ops;
+#endif
 #endif
 
 #if defined(HAVE_SSE2) && defined(HAVE_SSSE3)
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_ssse3_ops;
+_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_ssse3_intrin_ops;
 #endif
 
 #if defined(HAVE_AVX) && defined(HAVE_AVX2)
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_avx2_ops;
+_ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_avx2_comedy_ops;
 _ZFS_FLETCHER_H const fletcher_4_ops_t fletcher_4_avx2_intrin_ops;
 #endif
 

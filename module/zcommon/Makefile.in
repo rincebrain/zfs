@@ -17,13 +17,37 @@ $(MODULE)-objs += zfs_deleg.o
 $(MODULE)-objs += zfs_fletcher.o
 $(MODULE)-objs += zfs_fletcher_superscalar.o
 $(MODULE)-objs += zfs_fletcher_superscalar4.o
+#$(MODULE)-objs += zfs_fletcher_superscalar4_simd.o
 $(MODULE)-objs += zfs_namecheck.o
 $(MODULE)-objs += zfs_prop.o
 $(MODULE)-objs += zpool_prop.o
 $(MODULE)-objs += zprop_common.o
 
 $(MODULE)-$(CONFIG_X86) += zfs_fletcher_intel.o
+$(MODULE)-$(CONFIG_X86) += zfs_fletcher_intel_comedy.o
 $(MODULE)-$(CONFIG_X86) += zfs_fletcher_intel_intrin.o
 $(MODULE)-$(CONFIG_X86) += zfs_fletcher_sse.o
+$(MODULE)-$(CONFIG_X86) += zfs_fletcher_sse_intrin.o
+$(MODULE)-$(CONFIG_X86) += zfs_fletcher_sse_intrin_unsafe.o
 $(MODULE)-$(CONFIG_X86) += zfs_fletcher_avx512.o
 $(MODULE)-$(CONFIG_ARM64) += zfs_fletcher_aarch64_neon.o
+$(MODULE)-$(CONFIG_ARM64) += zfs_fletcher_aarch64_neon_unsafe.o
+$(MODULE)-$(CONFIG_ARM64) += zfs_fletcher_sse_intrin.o
+$(MODULE)-$(CONFIG_ARM64) += zfs_fletcher_sse_intrin_unsafe_aarch64.o
+
+#CFLAGS_zfs_fletcher.o += -DSIMD_MOED=1
+CFLAGS_zfs_fletcher_superscalar4_simd.o += -march=native -mtune=native -ftree-vectorize -O2 -DSIMD_MOED=1
+CFLAGS_REMOVE_zfs_fletcher_superscalar4_simd.o += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mtune=generic -O2 -mno-80387 -mno-fp-ret-in-387 -mgeneral-regs-only
+#CFLAGS_zfs_fletcher_sse_intrin.o += -march=native -mtune=native -ftree-vectorize -Os -DZFS_SSE2_INTRIN -DZFS_AVX2_INTRIN
+#CFLAGS_REMOVE_zfs_fletcher_sse_intrin.o += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mtune=generic -O2 -mno-80387 -mno-fp-ret-in-387 -mgeneral-regs-only
+CFLAGS_zfs_fletcher_sse_intrin_unsafe.o += -march=native -mtune=native -ftree-vectorize -Os -DZFS_SSE2_INTRIN -DZFS_AVX2_INTRIN
+CFLAGS_REMOVE_zfs_fletcher_sse_intrin_unsafe.o += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mtune=generic -O2 -mno-80387 -mno-fp-ret-in-387 -mgeneral-regs-only
+CFLAGS_zfs_fletcher_intel_intrin_unsafe.o += -march=native -mtune=native -ftree-vectorize -Os -DZFS_SSE2_INTRIN -DZFS_AVX2_INTRIN
+CFLAGS_REMOVE_zfs_fletcher_intel_intrin_unsafe.o += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -mno-avx -mtune=generic -O2 -mno-80387 -mno-fp-ret-in-387 -mgeneral-regs-only
+
+ifeq ($(CONFIG_ARM64),y)
+CFLAGS_zfs_fletcher.o += -DHAVE_SSE2 -DZFS_SSE2_INTRIN
+CFLAGS_zfs_fletcher_sse_intrin.o += -DHAVE_SSE2 -DZFS_SSE2_INTRIN
+#$(obj)/zfs_fletcher_sse_intrin_unsafe.o: c_flags += -DHAVE_SSE2 -I/home/pi/simde/simde/x86/ -I/home/pi/simde/simde/ -DSIMDE_ENABLE_NATIVE_ALIASES -fstack-usage -march=native -mtune=native
+endif
+
