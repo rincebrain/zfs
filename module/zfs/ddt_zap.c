@@ -31,8 +31,8 @@
 #include <sys/zap.h>
 #include <sys/dmu_tx.h>
 
-static const int ddt_zap_leaf_blockshift = 12;
-static const int ddt_zap_indirect_blockshift = 12;
+static int ddt_zap_leaf_blockshift = 15;
+static int ddt_zap_indirect_blockshift = 12;
 
 static int
 ddt_zap_create(objset_t *os, uint64_t *objectp, dmu_tx_t *tx, boolean_t prehash)
@@ -166,3 +166,8 @@ const ddt_ops_t ddt_zap_ops = {
 	ddt_zap_walk,
 	ddt_zap_count,
 };
+
+ZFS_MODULE_PARAM(ddt_zap, ddt_zap_, indirect_blockshift, INT, ZMOD_RW,
+        "Forced ashift used for indirect DDT ZAP blocks");
+ZFS_MODULE_PARAM(ddt_zap, ddt_zap_, leaf_blockshift, INT, ZMOD_RW,
+        "Forced ashift used for leaf DDT ZAP blocks");

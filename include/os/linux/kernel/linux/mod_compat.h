@@ -73,7 +73,8 @@ enum scope_prefix_types {
 	zfs_vnops,
 	zfs_zevent,
 	zfs_zio,
-	zfs_zil
+	zfs_zil,
+	ddt_zap
 };
 
 /*
