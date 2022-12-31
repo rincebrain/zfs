@@ -1398,11 +1398,11 @@ ztest_random_blocksize(void)
 
 	/*
 	 * Choose a block size >= the ashift.
-	 * If the SPA supports new MAXBLOCKSIZE, test up to 1MB blocks.
+	 * If the SPA supports new MAXBLOCKSIZE, test up to 16MB blocks.
 	 */
 	int maxbs = SPA_OLD_MAXBLOCKSHIFT;
 	if (spa_maxblocksize(ztest_spa) == SPA_MAXBLOCKSIZE)
-		maxbs = 20;
+		maxbs = 24;
 	uint64_t block_shift =
 	    ztest_random(maxbs - ztest_spa->spa_max_ashift + 1);
 	return (1 << (SPA_MINBLOCKSHIFT + block_shift));

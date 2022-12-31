@@ -21,7 +21,7 @@
 #
 # DESCRIPTION:
 #	Setting the special_small_blocks property to invalid values fails.
-#	Powers of two from 512 to 1M are allowed.
+#	Powers of two from 512 to 16M are allowed.
 #
 
 verify_runnable "global"

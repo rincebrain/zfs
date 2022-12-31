@@ -680,11 +680,11 @@ zfs_prop_init(void)
 	/* inherit number properties */
 	zprop_register_number(ZFS_PROP_RECORDSIZE, "recordsize",
 	    SPA_OLD_MAXBLOCKSIZE, PROP_INHERIT,
-	    ZFS_TYPE_FILESYSTEM, "512 to 1M, power of 2", "RECSIZE", B_FALSE,
+	    ZFS_TYPE_FILESYSTEM, "512 to 16M, power of 2", "RECSIZE", B_FALSE,
 	    sfeatures);
 	zprop_register_number(ZFS_PROP_SPECIAL_SMALL_BLOCKS,
 	    "special_small_blocks", 0, PROP_INHERIT, ZFS_TYPE_FILESYSTEM,
-	    "zero or 512 to 1M, power of 2", "SPECIAL_SMALL_BLOCKS", B_FALSE,
+	    "zero or 512 to 16M, power of 2", "SPECIAL_SMALL_BLOCKS", B_FALSE,
 	    sfeatures);
 
 	/* hidden properties */
