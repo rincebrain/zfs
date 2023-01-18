@@ -330,6 +330,8 @@ openzfs_init(void)
 		goto zcommon_failed;
 	if ((err = icp_init()) != 0)
 		goto icp_failed;
+	if ((err = gzip_init()) != 0)
+		goto gzip_failed;
 	if ((err = zstd_init()) != 0)
 		goto zstd_failed;
 	if ((err = openzfs_init_os()) != 0)
@@ -339,6 +341,8 @@ openzfs_init(void)
 openzfs_os_failed:
 	zstd_fini();
 zstd_failed:
+	gzip_fini();
+gzip_failed:
 	icp_fini();
 icp_failed:
 	zcommon_fini();
@@ -351,6 +355,7 @@ openzfs_fini(void)
 {
 	openzfs_fini_os();
 	zstd_fini();
+	gzip_fini();
 	icp_fini();
 	zcommon_fini();
 }

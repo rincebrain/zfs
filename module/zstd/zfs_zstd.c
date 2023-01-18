@@ -463,7 +463,7 @@ zfs_zstd_compress_wrap(void *s_start, void *d_start, size_t s_len, size_t d_len,
 	if (zstd_earlyabort_pass > 0 && zstd_level >= zstd_cutoff_level &&
 	    s_len >= actual_abort_size) {
 		int pass_len = 1;
-		pass_len = lz4_compress_zfs(s_start, d_start, s_len, d_len, 0);
+		pass_len = lz4_compress_zfs(s_start, d_start, s_len, d_len, 1);
 		if (pass_len < d_len) {
 			ZSTDSTAT_BUMP(zstd_stat_lz4pass_allowed);
 			goto keep_trying;

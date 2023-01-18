@@ -137,6 +137,7 @@ zstream_do_recompress(int argc, char *argv[])
 
 	fletcher_4_init();
 	zio_init();
+	gzip_init();
 	zstd_init();
 	int begin = 0;
 	boolean_t seen = B_FALSE;
@@ -368,6 +369,7 @@ zstream_do_recompress(int argc, char *argv[])
 	fletcher_4_fini();
 	zio_fini();
 	zstd_fini();
+	gzip_fini();
 
 	return (0);
 }

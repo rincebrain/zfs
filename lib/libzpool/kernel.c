@@ -819,6 +819,8 @@ kernel_init(int mode)
 	system_taskq_init();
 	icp_init();
 
+	gzip_init();
+
 	zstd_init();
 
 	spa_init((spa_mode_t)mode);
@@ -835,6 +837,7 @@ kernel_fini(void)
 	spa_fini();
 
 	zstd_fini();
+	gzip_fini();
 
 	icp_fini();
 	system_taskq_fini();

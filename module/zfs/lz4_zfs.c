@@ -40,11 +40,11 @@
 #include <sys/zio_compress.h>
 
 static int real_LZ4_compress(const char *source, char *dest, int isize,
-    int osize);
+    int osize, int accel);
 static int LZ4_compressCtx(void *ctx, const char *source, char *dest,
-    int isize, int osize);
+    int isize, int osize, int accel);
 static int LZ4_compress64kCtx(void *ctx, const char *source, char *dest,
-    int isize, int osize);
+    int isize, int osize, int accel);
 
 /* See lz4.c */
 int LZ4_uncompress_unknownOutputSize(const char *source, char *dest,
@@ -63,7 +63,7 @@ lz4_compress_zfs(void *s_start, void *d_start, size_t s_len,
 	ASSERT(d_len >= sizeof (bufsiz));
 
 	bufsiz = real_LZ4_compress(s_start, &dest[sizeof (bufsiz)], s_len,
-	    d_len - sizeof (bufsiz));
+	    d_len - sizeof (bufsiz), n);
 
 	/* Signal an error if the compression routine returned zero. */
 	if (bufsiz == 0)
@@ -471,7 +471,7 @@ LZ4_NbCommonBytes(register U32 val)
 
 static int
 LZ4_compressCtx(void *ctx, const char *source, char *dest, int isize,
-    int osize)
+    int osize, int accel)
 {
 	struct refTables *srt = (struct refTables *)ctx;
 	HTYPE *HashTable = (HTYPE *) (srt->hashTable);
@@ -502,7 +502,7 @@ LZ4_compressCtx(void *ctx, const char *source, char *dest, int isize,
 
 	/* Main Loop */
 	for (;;) {
-		int findMatchAttempts = (1U << skipStrength) + 3;
+		int findMatchAttempts = (accel << skipStrength) + 3;
 		const BYTE *forwardIp = ip;
 		const BYTE *ref;
 		BYTE *token;
@@ -661,7 +661,7 @@ LZ4_compressCtx(void *ctx, const char *source, char *dest, int isize,
 
 static int
 LZ4_compress64kCtx(void *ctx, const char *source, char *dest, int isize,
-    int osize)
+    int osize, int accel)
 {
 	struct refTables *srt = (struct refTables *)ctx;
 	U16 *HashTable = (U16 *) (srt->hashTable);
@@ -690,7 +690,7 @@ LZ4_compress64kCtx(void *ctx, const char *source, char *dest, int isize,
 
 	/* Main Loop */
 	for (;;) {
-		int findMatchAttempts = (1U << skipStrength) + 3;
+		int findMatchAttempts = (accel << skipStrength) + 3;
 		const BYTE *forwardIp = ip;
 		const BYTE *ref;
 		BYTE *token;
@@ -837,8 +837,10 @@ LZ4_compress64kCtx(void *ctx, const char *source, char *dest, int isize,
 }
 
 static int
-real_LZ4_compress(const char *source, char *dest, int isize, int osize)
+real_LZ4_compress(const char *source, char *dest, int isize, int osize, int accel)
 {
+	if (accel == 0)
+		accel = 1;
 	void *ctx;
 	int result;
 
@@ -855,9 +857,9 @@ real_LZ4_compress(const char *source, char *dest, int isize, int osize)
 	memset(ctx, 0, sizeof (struct refTables));
 
 	if (isize < LZ4_64KLIMIT)
-		result = LZ4_compress64kCtx(ctx, source, dest, isize, osize);
+		result = LZ4_compress64kCtx(ctx, source, dest, isize, osize, accel);
 	else
-		result = LZ4_compressCtx(ctx, source, dest, isize, osize);
+		result = LZ4_compressCtx(ctx, source, dest, isize, osize, accel);
 
 	kmem_cache_free(lz4_cache, ctx);
 	return (result);
