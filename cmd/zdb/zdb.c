@@ -102,6 +102,13 @@
 #define	ZDB_MAP_OBJECT_ID(obj) (obj)
 #endif
 
+typedef struct zblkstat {
+	uint64_t metadata_logical;
+	uint64_t metadata_physical;
+	uint64_t data_logical;
+	uint64_t data_physical;
+} zblkstat_t;
+
 static const char *
 zdb_ot_name(dmu_object_type_t type)
 {
@@ -2415,15 +2422,28 @@ print_indirect(spa_t *spa, blkptr_t *bp, const zbookmark_phys_t *zb,
 	(void) printf("%s\n", blkbuf);
 }
 
+static void count_indirect(blkptr_t *bp, zblkstat_t *zst) {
+	if (BP_IS_HOLE(bp))
+		return;
+	if (BP_GET_LEVEL(bp) > 0) {
+		zst->metadata_logical += BP_GET_LSIZE(bp);
+		zst->metadata_physical += BP_GET_PSIZE(bp);
+	} else {
+		zst->data_logical += BP_GET_LSIZE(bp);
+		zst->data_physical += BP_GET_PSIZE(bp);
+	}
+}
+
 static int
 visit_indirect(spa_t *spa, const dnode_phys_t *dnp,
-    blkptr_t *bp, const zbookmark_phys_t *zb)
+    blkptr_t *bp, const zbookmark_phys_t *zb, zblkstat_t *zst)
 {
 	int err = 0;
 
 	if (bp->blk_birth == 0)
 		return (0);
 
+	count_indirect(bp, zst);
 	print_indirect(spa, bp, zb, dnp);
 
 	if (BP_GET_LEVEL(bp) > 0 && !BP_IS_HOLE(bp)) {
@@ -2449,7 +2469,7 @@ visit_indirect(spa_t *spa, const dnode_phys_t *dnp,
 			SET_BOOKMARK(&czb, zb->zb_objset, zb->zb_object,
 			    zb->zb_level - 1,
 			    zb->zb_blkid * epb + i);
-			err = visit_indirect(spa, dnp, cbp, &czb);
+			err = visit_indirect(spa, dnp, cbp, &czb, zst);
 			if (err)
 				break;
 			fill += BP_GET_FILL(cbp);
@@ -2467,6 +2487,7 @@ dump_indirect(dnode_t *dn)
 {
 	dnode_phys_t *dnp = dn->dn_phys;
 	zbookmark_phys_t czb;
+	zblkstat_t zst = {0};
 
 	(void) printf("Indirect blocks:\n");
 
@@ -2475,8 +2496,20 @@ dump_indirect(dnode_t *dn)
 	for (int j = 0; j < dnp->dn_nblkptr; j++) {
 		czb.zb_blkid = j;
 		(void) visit_indirect(dmu_objset_spa(dn->dn_objset), dnp,
-		    &dnp->dn_blkptr[j], &czb);
+		    &dnp->dn_blkptr[j], &czb, &zst);
 	}
+	
+	printf("\n");
+	printf("Stats: metadata %lluL/%lluP data %lluL/%lluP total %lluL/%lluP phys/log ratio %llf\n"
+		      "metadata phys/log ratio %llf metadata log/phys %% of data %llf/%llf \n",
+		zst.metadata_logical,	zst.metadata_physical, zst.data_logical, zst.data_physical,
+		zst.metadata_logical + zst.data_logical, zst.metadata_physical + zst.data_physical,
+		((long double)(zst.metadata_physical + zst.data_physical)) /
+		((long double)(zst.metadata_logical + zst.data_logical)),
+		(((long double)zst.metadata_physical) / ((long double)zst.metadata_logical)),
+		(((long double)zst.metadata_logical) / ((long double)zst.metadata_logical + zst.data_logical)),
+		(((long double)zst.metadata_physical) / ((long double)zst.metadata_physical + zst.data_physical))
+		);
 
 	(void) printf("\n");
 }
