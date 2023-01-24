@@ -81,6 +81,14 @@ krwlock_t os_lock;
  */
 static const int dmu_find_threads = 0;
 
+enum {
+	FORCE_SYNC_USERSPACE = 1,
+	FORCE_SYNC_QUOTA = 2,
+} force_sync_t;
+
+
+static int dmu_quota_force_sync = (FORCE_SYNC_USERSPACE | FORCE_SYNC_QUOTA);
+
 /*
  * Backfill lower metadnode objects after this many have been freed.
  * Backfilling negatively impacts object creation rates, so only do it
@@ -2377,6 +2385,9 @@ dmu_objset_userspace_upgrade_cb(objset_t *os)
 	if (!dmu_objset_userused_enabled(os))
 		return (SET_ERROR(ENOTSUP));
 
+	if (dmu_quota_force_sync & FORCE_SYNC_USERSPACE)
+		txg_wait_synced(dmu_objset_pool(os), 0);
+
 	err = dmu_objset_space_upgrade(os);
 	if (err)
 		return (err);
@@ -2407,6 +2418,9 @@ dmu_objset_id_quota_upgrade_cb(objset_t *os)
 	if (!dmu_objset_projectquota_enabled(os) &&
 	    dmu_objset_userobjspace_present(os))
 		return (SET_ERROR(ENOTSUP));
+
+	if (dmu_quota_force_sync & FORCE_SYNC_QUOTA)
+		txg_wait_synced(dmu_objset_pool(os), 0);
 
 	err = dmu_objset_space_upgrade(os);
 	if (err)
@@ -3025,6 +3039,10 @@ dmu_objset_willuse_space(objset_t *os, int64_t space, dmu_tx_t *tx)
 
 	dsl_pool_dirty_space(dmu_tx_pool(tx), space, tx);
 }
+
+/* CSTYLED */
+ZFS_MODULE_PARAM(zfs, , dmu_quota_force_sync, INT, ZMOD_RW,
+	"Bitmask for when to wait on txg_sync before account update");
 
 #if defined(_KERNEL)
 EXPORT_SYMBOL(dmu_objset_zil);
