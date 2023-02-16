@@ -23,6 +23,7 @@ off_ucor:	Show SMART offline uncorrectable errors (ATA).
 ata_err:	Show SMART ATA errors (ATA).
 pwr_cyc:	Show SMART power cycle count (ATA).
 serial:		Show disk serial number.
+logicalid:	Show SAS logical unit ID
 nvme_err:	Show SMART NVMe errors (NVMe).
 smart_test:	Show SMART self-test results summary.
 test_type:	Show SMART self-test type (short, long... ).
@@ -114,6 +115,7 @@ if [ -b "$somepath" ] && PATH="/usr/sbin:$PATH" command -v smartctl > /dev/null 
 /SMART Health Status:/{printf "health="; for(i=4;i<=NF-1;i++){printf "%s_", $i}; printf "%s\n", $i}
 /number of hours powered up/{print "hours_on="$7; hours_on=int($7)}
 /Serial number:/{print "serial="$3}
+/Logical Unit id:/{print "logicalid="$3}
 
 # SATA specific
 /Reallocated_Sector_Ct/{print "realloc="$10}
@@ -210,7 +212,7 @@ case $script in
 smart)
 	# Print temperature plus common predictors of drive failure
 	if [ "$type" = "sas" ] ; then
-		scripts="temp|health|r_ucor|w_ucor"
+		scripts="temp|health|r_ucor|w_ucor|logicalid"
 	elif [ "$type" = "sata" ] ; then
 		scripts="temp|health|ata_err|realloc|rep_ucor|cmd_to|pend_sec|off_ucor"
 	elif [ "$type" = "nvme" ] ; then
@@ -220,7 +222,7 @@ smart)
 smartx)
 	# Print some other interesting stats
 	if [ "$type" = "sas" ] ; then
-		scripts="hours_on|defect|nonmed|r_proc|w_proc"
+		scripts="hours_on|defect|nonmed|r_proc|w_proc|logicalid"
 	elif [ "$type" = "sata" ] ; then
 		scripts="hours_on|pwr_cyc"
 	elif [ "$type" = "nvme" ] ; then
