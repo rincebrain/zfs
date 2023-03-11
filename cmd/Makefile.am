@@ -65,6 +65,7 @@ include $(srcdir)/%D%/zinject/Makefile.am
 include $(srcdir)/%D%/zpool/Makefile.am
 include $(srcdir)/%D%/zpool_influxdb/Makefile.am
 include $(srcdir)/%D%/zstream/Makefile.am
+include $(srcdir)/%D%/clonefile/Makefile.am
 
 
 if BUILD_LINUX

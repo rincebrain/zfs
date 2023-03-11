@@ -1290,6 +1290,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		zfs_sa_upgrade_txholds(tx, outzp);
 		error = dmu_tx_assign(tx, TXG_WAIT);
 		if (error != 0) {
+			zfs_dbgmsg("dmu_brt_readbps: %d", error);
 			dmu_tx_abort(tx);
 			break;
 		}
@@ -1333,8 +1334,10 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 
 		dmu_tx_commit(tx);
 
-		if (error != 0)
+		if (error != 0) {
+			zfs_dbgmsg("sa_bulk_update: %d", error);
 			break;
+		}
 
 		inoff += size;
 		outoff += size;

@@ -1239,6 +1239,132 @@ zpl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return (-ENOTTY);
 	}
 }
+#if 0
+static int
+clonefile_lock(struct file* srcf, struct file* dstf,
+    struct clonefile_lock *cbl)
+{
+	int error;
+
+	cbl->srcfp = srcf;
+	cbl->srcioflag = 0;
+	cbl->srcvp = NULL;
+	cbl->srcvnlock = B_FALSE;
+	cbl->dstfp = dstf;
+	cbl->dstioflag = 0;
+	cbl->dstvp = NULL;
+	cbl->dstvnlock = B_FALSE;
+	cbl->dstmp = NULL;
+
+	/*
+	 * Avoid lock order reversal.
+	 */
+	if (cbl->srcvp < cbl->dstvp) {
+		error = clonefile_lock_src(cbl->srcfp, cbl->srcvp, td);
+		if (error == 0) {
+			cbl->srcvnlock = B_TRUE;
+			error = clonefile_lock_dst(cbl->dstfp, cbl->dstvp, td,
+			    &cbl->dstmp);
+			if (error == 0) {
+				cbl->dstvnlock = B_TRUE;
+			}
+		}
+	} else {
+		error = clonefile_lock_dst(cbl->dstfp, cbl->dstvp, td,
+		    &cbl->dstmp);
+		if (error == 0) {
+			cbl->dstvnlock = B_TRUE;
+			if (cbl->srcvp != cbl->dstvp) {
+				error = clonefile_lock_src(cbl->srcfp,
+				    cbl->srcvp, td);
+				if (error == 0) {
+					cbl->srcvnlock = B_TRUE;
+				}
+			}
+		}
+	}
+	if (error != 0) {
+		goto out;
+	}
+
+	cbl->srcioflag = clonefile_get_ioflag(cbl->srcfp);
+	cbl->dstioflag = clonefile_get_ioflag(cbl->dstfp);
+
+out:
+	if (error != 0) {
+		clonefile_unlock(cbl, td);
+	}
+
+	return (error);
+}
+#endif
+
+ssize_t 
+zpl_copy_range(struct file * srcf, loff_t off_in, struct file * dstf,
+			loff_t off_out, size_t len, unsigned int flags) {
+		printk(KERN_INFO "srcf %px off_in %llu dstf %px off_out %llu len %llu flags %llu", srcf, (u_longlong_t)off_in, dstf, (u_longlong_t)off_out, (u_longlong_t)len, (u_longlong_t)flags);
+	cred_t *cr = CRED();
+	uint64_t tmplen = len;
+	struct inode *srci, *dsti;
+	srci = file_inode(srcf);
+	if (srci == NULL) {
+		printk("srci NULL, wtf");
+		zfs_dbgmsg("srci NULL, wtf");
+		return (-1);
+	}
+	dsti = file_inode(dstf);
+	if (dsti == NULL) {
+		printk("dsti NULL, wtf");
+		zfs_dbgmsg("dsti NULL, wtf");
+		return (-1);
+	}
+	spl_inode_lock_shared(srci);
+	if (dsti != srci)
+		spl_inode_lock_shared(dsti);
+	int err = zfs_clone_range(ITOZ(srci), &off_in,
+	                       ITOZ(dsti), &off_out, &tmplen, cr);
+	if (err != 0)
+		zfs_dbgmsg("zfs_clone_range err: %d", err);
+	if (dsti != srci)
+		spl_inode_unlock_shared(dsti);
+	spl_inode_unlock_shared(srci);
+
+	return (tmplen > 0 ? tmplen : err);
+}
+
+loff_t
+zpl_remap_range(struct file *file_in, loff_t pos_in,
+    struct file *file_out, loff_t pos_out, loff_t len,
+    unsigned int remap_flags) {
+    	cred_t *cr = CRED();
+	uint64_t tmplen = 0;
+	printk("file_in %px pos_in %llu file_out %px pos_out %llu len %llu remap_flags %llu", file_in, (u_longlong_t)pos_in, file_out, (u_longlong_t)pos_out , (u_longlong_t)len, (u_longlong_t)remap_flags);
+	if (len == 0) {
+		pos_in = ITOZ(file_inode(file_out))->z_size;
+		len = ITOZ(file_inode(file_in))->z_size;
+		// TODO: make sure we always append to end of file, not just clobber it; handle non-trivial cases
+		tmplen = len;
+		//return SET_ERROR(-ENOTSUP);
+	}
+	if (remap_flags & REMAP_FILE_DEDUP) {
+		// TODO: check file contents before remapping
+		return SET_ERROR(-ENOTSUP);
+	}
+	spl_inode_lock_shared(file_inode(file_in));
+	if (file_inode(file_out) != file_inode(file_in))
+		spl_inode_lock_shared(file_inode(file_out));
+	printk(KERN_INFO "\nBEFORE file_in %px pos_in %llu file_out %px pos_out %llu len %llu\n", ITOZ(file_inode(file_in)), (u_longlong_t)pos_in, ITOZ(file_inode(file_out)), (u_longlong_t)pos_out , (u_longlong_t)tmplen);
+	int err = zfs_clone_range(ITOZ(file_inode(file_in)), &pos_in,
+	                       ITOZ(file_inode(file_out)), &pos_out, &tmplen, cr);
+	printk(KERN_INFO "\nAFTER file_in %px pos_in %llu file_out %px pos_out %llu len %llu err %llu\n", ITOZ(file_inode(file_in)), (u_longlong_t)pos_in, ITOZ(file_inode(file_out)), (u_longlong_t)pos_out , (u_longlong_t)tmplen, (u_longlong_t)err);
+	if (err != 0)
+		zfs_dbgmsg("zfs_clone_range err: %d", err);
+	if (file_inode(file_out) != file_inode(file_in))
+		spl_inode_unlock_shared(file_inode(file_out));
+	spl_inode_unlock_shared(file_inode(file_in));
+
+	return (tmplen > 0 ? 0 : err);
+}
 
 #ifdef CONFIG_COMPAT
 static long
@@ -1318,6 +1444,8 @@ const struct file_operations zpl_file_operations = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= zpl_compat_ioctl,
 #endif
+	.copy_file_range = zpl_copy_range,
+	.remap_file_range = zpl_remap_range,
 };
 
 const struct file_operations zpl_dir_file_operations = {

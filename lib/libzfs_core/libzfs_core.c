@@ -186,6 +186,7 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 	if (ioc == fail_ioc_cmd)
 		return (fail_ioc_err);
 #endif
+//	fprintf(stderr, "We made it at least to point 1.\n");
 
 	if (name != NULL)
 		(void) strlcpy(zc.zc_name, name, sizeof (zc.zc_name));
@@ -211,6 +212,7 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 			goto out;
 		}
 	}
+//	fprintf(stderr, "We made it at least to point 2.\n");
 
 	while (lzc_ioctl_fd(g_fd, ioc, &zc) != 0) {
 		/*
@@ -220,6 +222,7 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 		 * Channel programs that exit with ENOMEM ran over the
 		 * lua memory sandbox; they should not be retried.
 		 */
+//		fprintf(stderr, "We made it at least to point 3.\n");
 		if (errno == ENOMEM && resultp != NULL &&
 		    ioc != ZFS_IOC_CHANNEL_PROGRAM) {
 			free((void *)(uintptr_t)zc.zc_nvlist_dst);
@@ -241,9 +244,25 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 	}
 
 out:
+//		fprintf(stderr, "We made it at least to point 4. %d\n", error);
 	if (packed != NULL)
 		fnvlist_pack_free(packed, size);
 	free((void *)(uintptr_t)zc.zc_nvlist_dst);
+	return (error);
+}
+
+int
+lzc_clonefile(const char* srcpath, const char* dstpath, uint64_t src_off, uint64_t dst_off, uint64_t len) {
+	int error = 0;
+	nvlist_t *innvl = fnvlist_alloc();
+	nvlist_t *outnvl = NULL;
+	fnvlist_add_string(innvl, "src", srcpath);
+	fnvlist_add_string(innvl, "dst", dstpath);
+	fnvlist_add_uint64(innvl, "src_off", src_off);
+	fnvlist_add_uint64(innvl, "dst_off", dst_off);
+	fnvlist_add_uint64(innvl, "len", len);
+	error = lzc_ioctl(ZFS_IOC_FCLONEFILE, NULL, innvl, &outnvl);
+	nvlist_free(innvl);
 	return (error);
 }
 

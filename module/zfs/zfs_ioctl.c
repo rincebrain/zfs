@@ -221,6 +221,10 @@
 #include <sys/lua/lauxlib.h>
 #include <sys/zfs_ioctl_impl.h>
 
+#ifdef __linux__
+#include <linux/fs.h>
+#endif
+
 kmutex_t zfsdev_state_lock;
 static zfsdev_state_t zfsdev_state_listhead;
 
@@ -6491,6 +6495,51 @@ zfs_ioc_space_snaps(const char *lastsnap, nvlist_t *innvl, nvlist_t *outnvl)
 	return (error);
 }
 
+static const zfs_ioc_key_t zfs_keys_fclonefile[] = {
+	{"src",		DATA_TYPE_STRING,	0},
+	{"dst",		DATA_TYPE_STRING,	0},
+	{"src_off",		DATA_TYPE_UINT64,	0},
+	{"dst_off",		DATA_TYPE_UINT64,	0},
+	{"len",			DATA_TYPE_UINT64,	0},
+};
+
+static int
+zfs_ioc_fclonefile(const char* useless, nvlist_t *innvl, nvlist_t *outnvl)
+{
+	int err = 0;
+	zfs_dbgmsg("We made it in.");
+	#ifdef __linux__
+
+	char* src = fnvlist_lookup_string(innvl, "src");
+	char* dst = fnvlist_lookup_string(innvl, "dst");
+	uint64_t src_off = fnvlist_lookup_uint64(innvl, "src_off");
+	uint64_t dst_off = fnvlist_lookup_uint64(innvl, "dst_off");
+	uint64_t len = fnvlist_lookup_uint64(innvl, "len");
+
+	struct file* readp = filp_open(src, O_RDONLY|O_LARGEFILE, 0);
+	zfs_dbgmsg("src %s", src);
+	if (readp == NULL || IS_ERR(readp)) {
+		zfs_dbgmsg("readp was broke, wtf %ld", PTR_ERR(readp));
+		return -1;
+	}
+	struct file* writep = filp_open(dst, O_WRONLY|O_CREAT|O_LARGEFILE, 0644);
+	zfs_dbgmsg("dst %s", dst);
+	if (writep == NULL || IS_ERR(writep)) {
+		zfs_dbgmsg("writep was broke, wtf %ld", PTR_ERR(writep));
+		filp_close(readp, NULL);
+		return -1;
+	}
+	err = zpl_remap_range(readp, src_off, writep, dst_off, len, 0);
+	zfs_dbgmsg("zpl_copy_range was %d", err);
+	filp_close(writep, NULL);
+	filp_close(readp, NULL);
+	#else
+	err = -1;
+	#endif
+	zfs_dbgmsg("We out with %d", err);
+	return (err);
+}
+
 /*
  * innvl: {
  *     "fd" -> file descriptor to write stream to (int32)
@@ -7217,6 +7266,11 @@ zfs_ioctl_init(void)
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_FALSE, B_FALSE,
 	    zfs_keys_vdev_set_props, ARRAY_SIZE(zfs_keys_vdev_set_props));
 
+	zfs_ioctl_register("fclonefile", ZFS_IOC_FCLONEFILE,
+	    zfs_ioc_fclonefile, zfs_secpolicy_config, NO_NAME,
+	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_FALSE, B_FALSE,
+	    zfs_keys_fclonefile, ARRAY_SIZE(zfs_keys_fclonefile));
+
 	/* IOCTLS that use the legacy function signature */
 
 	zfs_ioctl_register_legacy(ZFS_IOC_POOL_FREEZE, zfs_ioc_pool_freeze,
@@ -7608,6 +7662,7 @@ zfsdev_state_destroy(void *priv)
 long
 zfsdev_ioctl_common(uint_t vecnum, zfs_cmd_t *zc, int flag)
 {
+	zfs_dbgmsg("We triggered on %d %p %d", vecnum, zc, flag);
 	int error, cmd;
 	const zfs_ioc_vec_t *vec;
 	char *saved_poolname = NULL;
