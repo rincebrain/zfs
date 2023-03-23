@@ -2,7 +2,20 @@ dnl #
 dnl # Check for generic io accounting interface.
 dnl #
 AC_DEFUN([ZFS_AC_KERNEL_SRC_GENERIC_IO_ACCT], [
-	ZFS_LINUX_TEST_SRC([bdev_io_acct], [
+	ZFS_LINUX_TEST_SRC([bdev_io_acct_62], [
+		#include <linux/blkdev.h>
+	], [
+		struct block_device *bdev = NULL;
+		struct bio *bio = NULL;
+		unsigned long passed_time = 0;
+		unsigned long start_time;
+
+		start_time = bdev_start_io_acct(bdev, bio_op(bio),
+		    bio_sectors(bio), passed_time);
+		bdev_end_io_acct(bdev, bio_op(bio), bio_sectors(bio), start_time);
+	])
+
+	ZFS_LINUX_TEST_SRC([bdev_io_acct_old], [
 		#include <linux/blkdev.h>
 	], [
 		struct block_device *bdev = NULL;
@@ -68,13 +81,17 @@ AC_DEFUN([ZFS_AC_KERNEL_GENERIC_IO_ACCT], [
 	dnl # disk_start_io_acct() and disk_end_io_acct() have been replaced by
 	dnl # bdev_start_io_acct() and bdev_end_io_acct().
 	dnl #
-	AC_MSG_CHECKING([whether generic bdev_*_io_acct() are available])
-	ZFS_LINUX_TEST_RESULT([bdev_io_acct], [
+	AC_MSG_CHECKING([whether 6.2+ bdev_*_io_acct() are available])
+	ZFS_LINUX_TEST_RESULT([bdev_io_acct_62], [
 		AC_MSG_RESULT(yes)
-		AC_DEFINE(HAVE_BDEV_IO_ACCT, 1, [bdev_*_io_acct() available])
+		AC_DEFINE(HAVE_BDEV_IO_ACCT_62, 1, [bdev_*_io_acct() available])
 	], [
 		AC_MSG_RESULT(no)
-
+		AC_MSG_CHECKING([whether pre-6.3 bdev_*_io_acct() are available])
+		ZFS_LINUX_TEST_RESULT([bdev_io_acct_old], [
+			AC_MSG_RESULT(yes)
+			AC_DEFINE(HAVE_BDEV_IO_ACCT_OLD, 1, [bdev_*_io_acct() available])
+		], [
 		dnl #
 		dnl # 5.12 API,
 		dnl #
@@ -136,4 +153,5 @@ AC_DEFUN([ZFS_AC_KERNEL_GENERIC_IO_ACCT], [
 			])
 		])
 	])
+])
 ])
