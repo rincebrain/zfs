@@ -594,7 +594,7 @@ blk_generic_start_io_acct(struct request_queue *q __attribute__((unused)),
 {
 #if defined(HAVE_BDEV_IO_ACCT_62)
 	return (bdev_start_io_acct(bio->bi_bdev, bio_op(bio),
-	    bio_sectors(bio), jiffies));
+	    jiffies));
 #elif defined(HAVE_BDEV_IO_ACCT_OLD)
 	return (bdev_start_io_acct(bio->bi_bdev, bio_sectors(bio),
 	    bio_op(bio), jiffies));

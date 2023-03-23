@@ -11,7 +11,7 @@ AC_DEFUN([ZFS_AC_KERNEL_SRC_GENERIC_IO_ACCT], [
 		unsigned long start_time;
 
 		start_time = bdev_start_io_acct(bdev, bio_op(bio),
-		    bio_sectors(bio), passed_time);
+		    passed_time);
 		bdev_end_io_acct(bdev, bio_op(bio), bio_sectors(bio), start_time);
 	])
 
@@ -92,6 +92,7 @@ AC_DEFUN([ZFS_AC_KERNEL_GENERIC_IO_ACCT], [
 			AC_MSG_RESULT(yes)
 			AC_DEFINE(HAVE_BDEV_IO_ACCT_OLD, 1, [bdev_*_io_acct() available])
 		], [
+		AC_MSG_RESULT(no)
 		dnl #
 		dnl # 5.12 API,
 		dnl #
