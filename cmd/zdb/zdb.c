@@ -3924,6 +3924,7 @@ dump_objset(objset_t *os)
 	char osname[ZFS_MAX_DATASET_NAME_LEN];
 	const char *type = "UNKNOWN";
 	int verbosity = dump_opt['d'];
+//	int blockstats = dump_opt['Q'];
 	boolean_t print_header;
 	unsigned i;
 	int error;
@@ -6960,6 +6961,416 @@ dump_block_stats(spa_t *spa)
 	return (0);
 }
 
+static int
+dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
+{
+	zdb_cb_t *zcb;
+	zdb_blkstats_t *zb, *tzb;
+	uint64_t norm_alloc, norm_space, total_alloc, total_found;
+	int flags = TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA |
+	    TRAVERSE_NO_DECRYPT | TRAVERSE_HARD;
+	boolean_t leaks = B_FALSE;
+	int e, c, err;
+	bp_embedded_type_t i;
+
+	zcb = umem_zalloc(sizeof (zdb_cb_t), UMEM_NOFAIL);
+
+	(void) printf("\nTraversing all blocks %s%s%s%s%s...\n\n",
+	    (dump_opt['c'] || !dump_opt['L']) ? "to verify " : "",
+	    (dump_opt['c'] == 1) ? "metadata " : "",
+	    dump_opt['c'] ? "checksums " : "",
+	    (dump_opt['c'] && !dump_opt['L']) ? "and verify " : "",
+	    !dump_opt['L'] ? "nothing leaked " : "");
+
+	/*
+	 * When leak detection is enabled we load all space maps as SM_ALLOC
+	 * maps, then traverse the pool claiming each block we discover. If
+	 * the pool is perfectly consistent, the segment trees will be empty
+	 * when we're done. Anything left over is a leak; any block we can't
+	 * claim (because it's not part of any space map) is a double
+	 * allocation, reference to a freed block, or an unclaimed log block.
+	 *
+	 * When leak detection is disabled (-L option) we still traverse the
+	 * pool claiming each block we discover, but we skip opening any space
+	 * maps.
+	 */
+	zdb_leak_init(spa, zcb);
+
+	/*
+	 * If there's a deferred-free bplist, process that first.
+	 */
+	(void) bpobj_iterate_nofree(&spa->spa_deferred_bpobj,
+	    bpobj_count_block_cb, zcb, NULL);
+
+	if (spa_version(spa) >= SPA_VERSION_DEADLISTS) {
+		(void) bpobj_iterate_nofree(&spa->spa_dsl_pool->dp_free_bpobj,
+		    bpobj_count_block_cb, zcb, NULL);
+	}
+
+	zdb_claim_removing(spa, zcb);
+
+	if (spa_feature_is_active(spa, SPA_FEATURE_ASYNC_DESTROY)) {
+		VERIFY3U(0, ==, bptree_iterate(spa->spa_meta_objset,
+		    spa->spa_dsl_pool->dp_bptree_obj, B_FALSE, count_block_cb,
+		    zcb, NULL));
+	}
+
+	deleted_livelists_count_blocks(spa, zcb);
+
+	if (dump_opt['c'] > 1)
+		flags |= TRAVERSE_PREFETCH_DATA;
+
+	zcb->zcb_totalasize = metaslab_class_get_alloc(spa_normal_class(spa));
+	zcb->zcb_totalasize += metaslab_class_get_alloc(spa_special_class(spa));
+	zcb->zcb_totalasize += metaslab_class_get_alloc(spa_dedup_class(spa));
+	zcb->zcb_totalasize +=
+	    metaslab_class_get_alloc(spa_embedded_log_class(spa));
+	zcb->zcb_start = zcb->zcb_lastprint = gethrtime();
+
+                        dsl_dataset_t *ds;
+                        uint64_t txg = 0;
+
+                        dsl_pool_t *dp = spa_get_dsl(spa);
+
+                        dsl_pool_config_enter(dp, FTAG);
+                        err = dsl_dataset_hold_obj(dp, dsobj, NULL, &ds);
+                        dsl_pool_config_exit(dp, FTAG);
+                        if (err != 0) {
+				printf("Unlimited bees works. %llu (%d)\n", dsobj, err);
+				return -1;
+                        }
+//                        if (dsl_dataset_phys(ds)->ds_prev_snap_txg > txg)
+//                                txg = dsl_dataset_phys(ds)->ds_prev_snap_txg;
+                        err = traverse_dataset(ds, txg, flags, zdb_blkptr_cb, zcb);
+                        dsl_dataset_rele(ds, FTAG);
+                        if (err != 0) {
+                        	printf("Oops all bees. %d\n", err);
+                        	return -1;
+			}
+                                
+                                
+
+//	err = traverse_dataset(spa, 0, flags, zdb_blkptr_cb, zcb);
+
+	/*
+	 * If we've traversed the data blocks then we need to wait for those
+	 * I/Os to complete. We leverage "The Godfather" zio to wait on
+	 * all async I/Os to complete.
+	 */
+	if (dump_opt['c']) {
+		for (c = 0; c < max_ncpus; c++) {
+			(void) zio_wait(spa->spa_async_zio_root[c]);
+			spa->spa_async_zio_root[c] = zio_root(spa, NULL, NULL,
+			    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE |
+			    ZIO_FLAG_GODFATHER);
+		}
+	}
+	ASSERT0(spa->spa_load_verify_bytes);
+
+	/*
+	 * Done after zio_wait() since zcb_haderrors is modified in
+	 * zdb_blkptr_done()
+	 */
+	zcb->zcb_haderrors |= err;
+
+	if (zcb->zcb_haderrors) {
+		(void) printf("\nError counts:\n\n");
+		(void) printf("\t%5s  %s\n", "errno", "count");
+		for (e = 0; e < 256; e++) {
+			if (zcb->zcb_errors[e] != 0) {
+				(void) printf("\t%5d  %llu\n",
+				    e, (u_longlong_t)zcb->zcb_errors[e]);
+			}
+		}
+	}
+
+	/*
+	 * Report any leaked segments.
+	 */
+	leaks |= zdb_leak_fini(spa, zcb);
+
+	tzb = &zcb->zcb_type[ZB_TOTAL][ZDB_OT_TOTAL];
+
+	norm_alloc = metaslab_class_get_alloc(spa_normal_class(spa));
+	norm_space = metaslab_class_get_space(spa_normal_class(spa));
+
+	total_alloc = norm_alloc +
+	    metaslab_class_get_alloc(spa_log_class(spa)) +
+	    metaslab_class_get_alloc(spa_embedded_log_class(spa)) +
+	    metaslab_class_get_alloc(spa_special_class(spa)) +
+	    metaslab_class_get_alloc(spa_dedup_class(spa)) +
+	    get_unflushed_alloc_space(spa);
+	total_found = tzb->zb_asize - zcb->zcb_dedup_asize +
+	    zcb->zcb_removing_size + zcb->zcb_checkpoint_size;
+
+	if (total_found == total_alloc && !dump_opt['L']) {
+		(void) printf("\n\tNo leaks (block sum matches space"
+		    " maps exactly)\n");
+	} else if (!dump_opt['L']) {
+		(void) printf("block traversal size %llu != alloc %llu "
+		    "(%s %lld)\n",
+		    (u_longlong_t)total_found,
+		    (u_longlong_t)total_alloc,
+		    (dump_opt['L']) ? "unreachable" : "leaked",
+		    (longlong_t)(total_alloc - total_found));
+		leaks = B_TRUE;
+	}
+
+	if (tzb->zb_count == 0) {
+		umem_free(zcb, sizeof (zdb_cb_t));
+		return (2);
+	}
+
+	(void) printf("\n");
+	(void) printf("\t%-16s %14llu\n", "bp count:",
+	    (u_longlong_t)tzb->zb_count);
+	(void) printf("\t%-16s %14llu\n", "ganged count:",
+	    (longlong_t)tzb->zb_gangs);
+	(void) printf("\t%-16s %14llu      avg: %6llu\n", "bp logical:",
+	    (u_longlong_t)tzb->zb_lsize,
+	    (u_longlong_t)(tzb->zb_lsize / tzb->zb_count));
+	(void) printf("\t%-16s %14llu      avg: %6llu     compression: %6.2f\n",
+	    "bp physical:", (u_longlong_t)tzb->zb_psize,
+	    (u_longlong_t)(tzb->zb_psize / tzb->zb_count),
+	    (double)tzb->zb_lsize / tzb->zb_psize);
+	(void) printf("\t%-16s %14llu      avg: %6llu     compression: %6.2f\n",
+	    "bp allocated:", (u_longlong_t)tzb->zb_asize,
+	    (u_longlong_t)(tzb->zb_asize / tzb->zb_count),
+	    (double)tzb->zb_lsize / tzb->zb_asize);
+	(void) printf("\t%-16s %14llu    ref>1: %6llu   deduplication: %6.2f\n",
+	    "bp deduped:", (u_longlong_t)zcb->zcb_dedup_asize,
+	    (u_longlong_t)zcb->zcb_dedup_blocks,
+	    (double)zcb->zcb_dedup_asize / tzb->zb_asize + 1.0);
+	(void) printf("\t%-16s %14llu     used: %5.2f%%\n", "Normal class:",
+	    (u_longlong_t)norm_alloc, 100.0 * norm_alloc / norm_space);
+
+	if (spa_special_class(spa)->mc_allocator[0].mca_rotor != NULL) {
+		uint64_t alloc = metaslab_class_get_alloc(
+		    spa_special_class(spa));
+		uint64_t space = metaslab_class_get_space(
+		    spa_special_class(spa));
+
+		(void) printf("\t%-16s %14llu     used: %5.2f%%\n",
+		    "Special class", (u_longlong_t)alloc,
+		    100.0 * alloc / space);
+	}
+
+	if (spa_dedup_class(spa)->mc_allocator[0].mca_rotor != NULL) {
+		uint64_t alloc = metaslab_class_get_alloc(
+		    spa_dedup_class(spa));
+		uint64_t space = metaslab_class_get_space(
+		    spa_dedup_class(spa));
+
+		(void) printf("\t%-16s %14llu     used: %5.2f%%\n",
+		    "Dedup class", (u_longlong_t)alloc,
+		    100.0 * alloc / space);
+	}
+
+	if (spa_embedded_log_class(spa)->mc_allocator[0].mca_rotor != NULL) {
+		uint64_t alloc = metaslab_class_get_alloc(
+		    spa_embedded_log_class(spa));
+		uint64_t space = metaslab_class_get_space(
+		    spa_embedded_log_class(spa));
+
+		(void) printf("\t%-16s %14llu     used: %5.2f%%\n",
+		    "Embedded log class", (u_longlong_t)alloc,
+		    100.0 * alloc / space);
+	}
+
+	for (i = 0; i < NUM_BP_EMBEDDED_TYPES; i++) {
+		if (zcb->zcb_embedded_blocks[i] == 0)
+			continue;
+		(void) printf("\n");
+		(void) printf("\tadditional, non-pointer bps of type %u: "
+		    "%10llu\n",
+		    i, (u_longlong_t)zcb->zcb_embedded_blocks[i]);
+
+		if (dump_opt['b'] >= 3) {
+			(void) printf("\t number of (compressed) bytes:  "
+			    "number of bps\n");
+			dump_histogram(zcb->zcb_embedded_histogram[i],
+			    sizeof (zcb->zcb_embedded_histogram[i]) /
+			    sizeof (zcb->zcb_embedded_histogram[i][0]), 0);
+		}
+	}
+
+	if (tzb->zb_ditto_samevdev != 0) {
+		(void) printf("\tDittoed blocks on same vdev: %llu\n",
+		    (longlong_t)tzb->zb_ditto_samevdev);
+	}
+	if (tzb->zb_ditto_same_ms != 0) {
+		(void) printf("\tDittoed blocks in same metaslab: %llu\n",
+		    (longlong_t)tzb->zb_ditto_same_ms);
+	}
+
+	for (uint64_t v = 0; v < spa->spa_root_vdev->vdev_children; v++) {
+		vdev_t *vd = spa->spa_root_vdev->vdev_child[v];
+		vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping;
+
+		if (vim == NULL) {
+			continue;
+		}
+
+		char mem[32];
+		zdb_nicenum(vdev_indirect_mapping_num_entries(vim),
+		    mem, vdev_indirect_mapping_size(vim));
+
+		(void) printf("\tindirect vdev id %llu has %llu segments "
+		    "(%s in memory)\n",
+		    (longlong_t)vd->vdev_id,
+		    (longlong_t)vdev_indirect_mapping_num_entries(vim), mem);
+	}
+
+	if (dump_opt['Q'] >= 2) {
+		int l, t, level;
+		char csize[32], lsize[32], psize[32], asize[32];
+		char avg[32], gang[32];
+		(void) printf("\nBlocks\tLSIZE\tPSIZE\tASIZE"
+		    "\t  avg\t comp\t%%Total\tType\n");
+
+		zfs_blkstat_t *mdstats = umem_zalloc(sizeof (zfs_blkstat_t),
+		    UMEM_NOFAIL);
+
+		for (t = 0; t <= ZDB_OT_TOTAL; t++) {
+			const char *typename;
+
+			/* make sure nicenum has enough space */
+			_Static_assert(sizeof (csize) >= NN_NUMBUF_SZ,
+			    "csize truncated");
+			_Static_assert(sizeof (lsize) >= NN_NUMBUF_SZ,
+			    "lsize truncated");
+			_Static_assert(sizeof (psize) >= NN_NUMBUF_SZ,
+			    "psize truncated");
+			_Static_assert(sizeof (asize) >= NN_NUMBUF_SZ,
+			    "asize truncated");
+			_Static_assert(sizeof (avg) >= NN_NUMBUF_SZ,
+			    "avg truncated");
+			_Static_assert(sizeof (gang) >= NN_NUMBUF_SZ,
+			    "gang truncated");
+
+			if (t < DMU_OT_NUMTYPES)
+				typename = dmu_ot[t].ot_name;
+			else
+				typename = zdb_ot_extname[t - DMU_OT_NUMTYPES];
+
+			if (zcb->zcb_type[ZB_TOTAL][t].zb_asize == 0) {
+				(void) printf("%6s\t%5s\t%5s\t%5s"
+				    "\t%5s\t%5s\t%6s\t%s\n",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    typename);
+				continue;
+			}
+
+			for (l = ZB_TOTAL - 1; l >= -1; l--) {
+				level = (l == -1 ? ZB_TOTAL : l);
+				zb = &zcb->zcb_type[level][t];
+
+				if (zb->zb_asize == 0)
+					continue;
+
+				if (level != ZB_TOTAL && t < DMU_OT_NUMTYPES &&
+				    (level > 0 || DMU_OT_IS_METADATA(t))) {
+					mdstats->zb_count += zb->zb_count;
+					mdstats->zb_lsize += zb->zb_lsize;
+					mdstats->zb_psize += zb->zb_psize;
+					mdstats->zb_asize += zb->zb_asize;
+					mdstats->zb_gangs += zb->zb_gangs;
+				}
+
+				if (dump_opt['b'] < 3 && level != ZB_TOTAL)
+					continue;
+
+				if (level == 0 && zb->zb_asize ==
+				    zcb->zcb_type[ZB_TOTAL][t].zb_asize)
+					continue;
+
+				zdb_nicenum(zb->zb_count, csize,
+				    sizeof (csize));
+				zdb_nicenum(zb->zb_lsize, lsize,
+				    sizeof (lsize));
+				zdb_nicenum(zb->zb_psize, psize,
+				    sizeof (psize));
+				zdb_nicenum(zb->zb_asize, asize,
+				    sizeof (asize));
+				zdb_nicenum(zb->zb_asize / zb->zb_count, avg,
+				    sizeof (avg));
+				zdb_nicenum(zb->zb_gangs, gang, sizeof (gang));
+
+				(void) printf("%6s\t%5s\t%5s\t%5s\t%5s"
+				    "\t%5.2f\t%6.2f\t",
+				    csize, lsize, psize, asize, avg,
+				    (double)zb->zb_lsize / zb->zb_psize,
+				    100.0 * zb->zb_asize / tzb->zb_asize);
+
+				if (level == ZB_TOTAL)
+					(void) printf("%s\n", typename);
+				else
+					(void) printf("    L%d %s\n",
+					    level, typename);
+
+				if (dump_opt['b'] >= 3 && zb->zb_gangs > 0) {
+					(void) printf("\t number of ganged "
+					    "blocks: %s\n", gang);
+				}
+
+				if (dump_opt['b'] >= 4) {
+					(void) printf("psize "
+					    "(in 512-byte sectors): "
+					    "number of blocks\n");
+					dump_histogram(zb->zb_psize_histogram,
+					    PSIZE_HISTO_SIZE, 0);
+				}
+			}
+		}
+		zdb_nicenum(mdstats->zb_count, csize,
+		    sizeof (csize));
+		zdb_nicenum(mdstats->zb_lsize, lsize,
+		    sizeof (lsize));
+		zdb_nicenum(mdstats->zb_psize, psize,
+		    sizeof (psize));
+		zdb_nicenum(mdstats->zb_asize, asize,
+		    sizeof (asize));
+		zdb_nicenum(mdstats->zb_asize / mdstats->zb_count, avg,
+		    sizeof (avg));
+		zdb_nicenum(mdstats->zb_gangs, gang, sizeof (gang));
+
+		(void) printf("%6s\t%5s\t%5s\t%5s\t%5s"
+		    "\t%5.2f\t%6.2f\t",
+		    csize, lsize, psize, asize, avg,
+		    (double)mdstats->zb_lsize / mdstats->zb_psize,
+		    100.0 * mdstats->zb_asize / tzb->zb_asize);
+		(void) printf("%s\n", "Metadata Total");
+
+		/* Output a table summarizing block sizes in the pool */
+		if (dump_opt['Q'] >= 2) {
+			dump_size_histograms(zcb);
+		}
+
+		umem_free(mdstats, sizeof (zfs_blkstat_t));
+	}
+
+	(void) printf("\n");
+
+	if (leaks) {
+		umem_free(zcb, sizeof (zdb_cb_t));
+		return (2);
+	}
+
+	if (zcb->zcb_haderrors) {
+		umem_free(zcb, sizeof (zdb_cb_t));
+		return (3);
+	}
+
+	umem_free(zcb, sizeof (zdb_cb_t));
+	return (0);
+}
+
 typedef struct zdb_ddt_entry {
 	ddt_key_t	zdde_key;
 	uint64_t	zdde_ref_blocks;
@@ -8019,7 +8430,7 @@ dump_zpool(spa_t *spa)
 		if (rc == 0)
 			rc = verify_device_removal_feature_counts(spa);
 	}
-
+	
 	if (rc == 0 && (dump_opt['b'] || dump_opt['c']))
 		rc = dump_block_stats(spa);
 
@@ -8709,6 +9120,7 @@ main(int argc, char **argv)
 		{"path",		required_argument,	NULL, 'p'},
 		{"parseable",		no_argument,		NULL, 'P'},
 		{"skip-label",		no_argument,		NULL, 'q'},
+		{"ds_blockstats",	no_argument,		NULL, 'Q'},
 		{"copy-object",		no_argument,		NULL, 'r'},
 		{"read-block",		no_argument,		NULL, 'R'},
 		{"io-stats",		no_argument,		NULL, 's'},
@@ -8727,7 +9139,7 @@ main(int argc, char **argv)
 	};
 
 	while ((c = getopt_long(argc, argv,
-	    "AbcCdDeEFGhiI:kK:lLmMNo:Op:PqrRsSt:uU:vVx:XYyZ",
+	    "AbcCdDeEFGhiI:kK:lLmMNo:Op:PqQrRsSt:uU:vVx:XYyZ",
 	    long_options, NULL)) != -1) {
 		switch (c) {
 		case 'b':
@@ -8744,6 +9156,7 @@ main(int argc, char **argv)
 		case 'M':
 		case 'N':
 		case 'O':
+		case 'Q':
 		case 'r':
 		case 'R':
 		case 's':
@@ -9200,6 +9613,13 @@ retry_lookup:
 					    strerror(errno));
 			}
 		}
+		if (dump_opt['Q']) {
+//			objset_t *myos;
+//			open_objset(argv[0], FTAG, &myos);
+			dump_ds_block_stats(spa, dmu_objset_id(sa_os));
+//			close_objset(myos, FTAG);
+		}
+		
 		if (os != NULL) {
 			dump_objset(os);
 		} else if (zopt_object_args > 0 && !dump_opt['m']) {
