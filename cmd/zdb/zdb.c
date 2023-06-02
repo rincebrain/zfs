@@ -5223,7 +5223,7 @@ dump_one_objset(const char *dsname, void *arg)
 /*
  * Block statistics.
  */
-#define	PSIZE_HISTO_SIZE (SPA_OLD_MAXBLOCKSIZE / SPA_MINBLOCKSIZE + 2)
+#define	PSIZE_HISTO_SIZE (SPA_MAXBLOCKSIZE / SPA_MINBLOCKSIZE + 2)
 typedef struct zdb_blkstats {
 	uint64_t zb_asize;
 	uint64_t zb_lsize;
@@ -5255,6 +5255,7 @@ static const char *zdb_ot_extname[] = {
 
 typedef struct zdb_cb {
 	zdb_blkstats_t	zcb_type[ZB_TOTAL + 1][ZDB_OT_TOTAL + 1];
+	zdb_blkstats_t	zcb_type_new[ZB_TOTAL + 1][ZDB_OT_TOTAL + 1][256];
 	uint64_t	zcb_removing_size;
 	uint64_t	zcb_checkpoint_size;
 	uint64_t	zcb_dedup_asize;
@@ -5268,6 +5269,15 @@ typedef struct zdb_cb {
 	uint64_t	zcb_psize_total;
 	uint64_t	zcb_lsize_total;
 	uint64_t	zcb_asize_total;
+	uint64_t	zcb_psize_count_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_lsize_count_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_asize_count_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_psize_len_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_lsize_len_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_asize_len_new[256][SPA_MAX_FOR_16M];
+	uint64_t	zcb_psize_total_new[256];
+	uint64_t	zcb_lsize_total_new[256];
+	uint64_t	zcb_asize_total_new[256];
 	uint64_t	zcb_embedded_blocks[NUM_BP_EMBEDDED_TYPES];
 	uint64_t	zcb_embedded_histogram[NUM_BP_EMBEDDED_TYPES]
 	    [BPE_PAYLOAD_SIZE + 1];
@@ -5319,7 +5329,7 @@ typedef struct one_histo {
  * is printed out.
  */
 static void
-dump_size_histograms(zdb_cb_t *zcb)
+dump_size_histograms(zdb_cb_t *zcb, int vdev)
 {
 	/*
 	 * A temporary buffer that allows us to convert a number into
@@ -5343,6 +5353,8 @@ dump_size_histograms(zdb_cb_t *zcb)
 	 */
 	one_histo_t parm_histo[NUM_HISTO];
 
+	if (vdev == -1) {
+
 	parm_histo[0].name = "psize";
 	parm_histo[0].count = zcb->zcb_psize_count;
 	parm_histo[0].len = zcb->zcb_psize_len;
@@ -5357,7 +5369,22 @@ dump_size_histograms(zdb_cb_t *zcb)
 	parm_histo[2].count = zcb->zcb_asize_count;
 	parm_histo[2].len = zcb->zcb_asize_len;
 	parm_histo[2].cumulative = 0;
+	} else {
+	parm_histo[0].name = "psize";
+	parm_histo[0].count = zcb->zcb_psize_count_new[vdev];
+	parm_histo[0].len = zcb->zcb_psize_len_new[vdev];
+	parm_histo[0].cumulative = 0;
 
+	parm_histo[1].name = "lsize";
+	parm_histo[1].count = zcb->zcb_lsize_count_new[vdev];
+	parm_histo[1].len = zcb->zcb_lsize_len_new[vdev];
+	parm_histo[1].cumulative = 0;
+
+	parm_histo[2].name = "asize";
+	parm_histo[2].count = zcb->zcb_asize_count_new[vdev];
+	parm_histo[2].len = zcb->zcb_asize_len_new[vdev];
+	parm_histo[2].cumulative = 0;
+}	
 
 	(void) printf("\nBlock Size Histogram\n");
 	/*
@@ -5475,12 +5502,27 @@ zdb_count_block(zdb_cb_t *zcb, zilog_t *zilog, const blkptr_t *bp,
 		int l = (i < 2) ? BP_GET_LEVEL(bp) : ZB_TOTAL;
 		int t = (i & 1) ? type : ZDB_OT_TOTAL;
 		int equal;
+		int is_embedded = BP_IS_EMBEDDED(bp); 
+		int vdev = DVA_GET_VDEV(&bp->blk_dva[0]);
+		if (is_embedded) {
+//			printf("\n Level %d (%d) type %d (%d) vdev %d is_embedded triggered\b", l, BP_GET_LEVEL(bp), type, t, vdev);
+			vdev = 99;
+		}
+		
 		zdb_blkstats_t *zb = &zcb->zcb_type[l][t];
+		zdb_blkstats_t *zb_new = &(zcb->zcb_type_new[l][t][vdev]);
+		
+//		printf("\nDBG: %p %d %d\n", zb_new, DVA_GET_VDEV(&bp->blk_dva[0]),BP_IS_EMBEDDED(bp));
 
 		zb->zb_asize += BP_GET_ASIZE(bp);
 		zb->zb_lsize += BP_GET_LSIZE(bp);
 		zb->zb_psize += BP_GET_PSIZE(bp);
 		zb->zb_count++;
+
+		zb_new->zb_asize += BP_GET_ASIZE(bp);
+		zb_new->zb_lsize += BP_GET_LSIZE(bp);
+		zb_new->zb_psize += BP_GET_PSIZE(bp);
+		zb_new->zb_count++;
 
 		/*
 		 * The histogram is only big enough to record blocks up to
@@ -5488,13 +5530,23 @@ zdb_count_block(zdb_cb_t *zcb, zilog_t *zilog, const blkptr_t *bp,
 		 * "other", bucket.
 		 */
 		unsigned idx = BP_GET_PSIZE(bp) >> SPA_MINBLOCKSHIFT;
-		idx = MIN(idx, SPA_OLD_MAXBLOCKSIZE / SPA_MINBLOCKSIZE + 1);
+		idx = MIN(idx, SPA_MAXBLOCKSIZE / SPA_MINBLOCKSIZE + 1);
 		zb->zb_psize_histogram[idx]++;
 
 		zb->zb_gangs += BP_COUNT_GANG(bp);
 
 		switch (BP_GET_NDVAS(bp)) {
 		case 2:
+			if (!is_embedded) {
+			vdev = (is_embedded ? 99 : DVA_GET_VDEV(&bp->blk_dva[1]));
+			
+			zb_new = &zcb->zcb_type_new[l][t][vdev];
+			zb_new->zb_asize += BP_GET_ASIZE(bp);
+			zb_new->zb_lsize += BP_GET_LSIZE(bp);
+			zb_new->zb_psize += BP_GET_PSIZE(bp);
+			zb_new->zb_count++;
+			}
+			
 			if (DVA_GET_VDEV(&bp->blk_dva[0]) ==
 			    DVA_GET_VDEV(&bp->blk_dva[1])) {
 				zb->zb_ditto_samevdev++;
@@ -5507,6 +5559,21 @@ zdb_count_block(zdb_cb_t *zcb, zilog_t *zilog, const blkptr_t *bp,
 			}
 			break;
 		case 3:
+			if (!is_embedded) {
+			vdev = (is_embedded ? 99 : DVA_GET_VDEV(&bp->blk_dva[1]));
+			zb_new = &zcb->zcb_type_new[l][t][vdev];
+			zb_new->zb_asize += BP_GET_ASIZE(bp);
+			zb_new->zb_lsize += BP_GET_LSIZE(bp);
+			zb_new->zb_psize += BP_GET_PSIZE(bp);
+			zb_new->zb_count++;
+			vdev = (is_embedded ? 99 : DVA_GET_VDEV(&bp->blk_dva[2]));
+			zb_new = &zcb->zcb_type_new[l][t][vdev];
+			zb_new->zb_asize += BP_GET_ASIZE(bp);
+			zb_new->zb_lsize += BP_GET_LSIZE(bp);
+			zb_new->zb_psize += BP_GET_PSIZE(bp);
+			zb_new->zb_count++;
+			}
+
 			equal = (DVA_GET_VDEV(&bp->blk_dva[0]) ==
 			    DVA_GET_VDEV(&bp->blk_dva[1])) +
 			    (DVA_GET_VDEV(&bp->blk_dva[0]) ==
@@ -5572,6 +5639,29 @@ zdb_count_block(zdb_cb_t *zcb, zilog_t *zilog, const blkptr_t *bp,
 	zcb->zcb_asize_count[bin]++;
 	zcb->zcb_asize_len[bin] += BP_GET_ASIZE(bp);
 	zcb->zcb_asize_total += BP_GET_ASIZE(bp);
+
+	for (int i = 0; i <= BP_GET_NDVAS(bp); i++) {
+	if (DVA_IS_VALID(&bp->blk_dva[i])) {
+	int vdev = DVA_GET_VDEV(&bp->blk_dva[i]);
+	int bin = highbit64(BP_GET_PSIZE(bp)) - 1;
+
+	zcb->zcb_psize_count_new[vdev][bin]++;
+	zcb->zcb_psize_len_new[vdev][bin] += BP_GET_PSIZE(bp);
+	zcb->zcb_psize_total_new[vdev] += BP_GET_PSIZE(bp);
+
+	bin = highbit64(BP_GET_LSIZE(bp)) - 1;
+
+	zcb->zcb_lsize_count_new[vdev][bin]++;
+	zcb->zcb_lsize_len_new[vdev][bin] += BP_GET_LSIZE(bp);
+	zcb->zcb_lsize_total_new[vdev] += BP_GET_LSIZE(bp);
+
+	bin = highbit64(BP_GET_ASIZE(bp)) - 1;
+
+	zcb->zcb_asize_count_new[vdev][bin]++;
+	zcb->zcb_asize_len_new[vdev][bin] += BP_GET_ASIZE(bp);
+	zcb->zcb_asize_total_new[vdev] += BP_GET_ASIZE(bp);
+	}
+	} 
 
 	if (dump_opt['L'])
 		return;
@@ -6926,20 +7016,20 @@ dump_block_stats(spa_t *spa)
 		    sizeof (psize));
 		zdb_nicenum(mdstats->zb_asize, asize,
 		    sizeof (asize));
-		zdb_nicenum(mdstats->zb_asize / mdstats->zb_count, avg,
+		zdb_nicenum(mdstats->zb_asize / (mdstats->zb_count == 0 ? 1 : mdstats->zb_count), avg,
 		    sizeof (avg));
 		zdb_nicenum(mdstats->zb_gangs, gang, sizeof (gang));
 
 		(void) printf("%6s\t%5s\t%5s\t%5s\t%5s"
 		    "\t%5.2f\t%6.2f\t",
 		    csize, lsize, psize, asize, avg,
-		    (double)mdstats->zb_lsize / mdstats->zb_psize,
+		    (double)mdstats->zb_lsize / (mdstats->zb_psize == 0 ? 1 : mdstats->zb_psize),
 		    100.0 * mdstats->zb_asize / tzb->zb_asize);
 		(void) printf("%s\n", "Metadata Total");
 
 		/* Output a table summarizing block sizes in the pool */
 		if (dump_opt['b'] >= 2) {
-			dump_size_histograms(zcb);
+			dump_size_histograms(zcb,-1);
 		}
 
 		umem_free(mdstats, sizeof (zfs_blkstat_t));
@@ -6965,7 +7055,7 @@ static int
 dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 {
 	zdb_cb_t *zcb;
-	zdb_blkstats_t *zb, *tzb;
+	zdb_blkstats_t *zb, *tzb, *zb_new;
 	uint64_t norm_alloc, norm_space, total_alloc, total_found;
 	int flags = TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA |
 	    TRAVERSE_NO_DECRYPT | TRAVERSE_HARD;
@@ -7283,7 +7373,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 					mdstats->zb_gangs += zb->zb_gangs;
 				}
 
-				if (dump_opt['b'] < 3 && level != ZB_TOTAL)
+				if (dump_opt['Q'] < 3 && level != ZB_TOTAL)
 					continue;
 
 				if (level == 0 && zb->zb_asize ==
@@ -7349,10 +7439,151 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 
 		/* Output a table summarizing block sizes in the pool */
 		if (dump_opt['Q'] >= 2) {
-			dump_size_histograms(zcb);
+			dump_size_histograms(zcb,-1);
 		}
 
 		umem_free(mdstats, sizeof (zfs_blkstat_t));
+	}
+
+	(void) printf("\n");
+
+	if (dump_opt['Q'] >= 1) {
+		for (int i = 0; i < spa->spa_root_vdev->vdev_children; i++) {
+		int l, t, level;
+		char csize[32], lsize[32], psize[32], asize[32];
+		char avg[32], gang[32];
+		(void) printf("\n========================\n");
+		(void) printf("\nStats for vdev %d:\n", i);
+		(void) printf("\n========================\n");
+		(void) printf("\nBlocks\tLSIZE\tPSIZE\tASIZE"
+		    "\t  avg\t comp\t%%Total\tType\n");
+
+		zfs_blkstat_t *mdstats = umem_zalloc(sizeof (zfs_blkstat_t),
+		    UMEM_NOFAIL);
+
+		for (t = 0; t <= ZDB_OT_TOTAL; t++) {
+			const char *typename;
+
+			/* make sure nicenum has enough space */
+			_Static_assert(sizeof (csize) >= NN_NUMBUF_SZ,
+			    "csize truncated");
+			_Static_assert(sizeof (lsize) >= NN_NUMBUF_SZ,
+			    "lsize truncated");
+			_Static_assert(sizeof (psize) >= NN_NUMBUF_SZ,
+			    "psize truncated");
+			_Static_assert(sizeof (asize) >= NN_NUMBUF_SZ,
+			    "asize truncated");
+			_Static_assert(sizeof (avg) >= NN_NUMBUF_SZ,
+			    "avg truncated");
+			_Static_assert(sizeof (gang) >= NN_NUMBUF_SZ,
+			    "gang truncated");
+
+			if (t < DMU_OT_NUMTYPES)
+				typename = dmu_ot[t].ot_name;
+			else
+				typename = zdb_ot_extname[t - DMU_OT_NUMTYPES];
+
+			if (zcb->zcb_type_new[ZB_TOTAL][t][i].zb_asize == 0) {
+				(void) printf("%6s\t%5s\t%5s\t%5s"
+				    "\t%5s\t%5s\t%6s\t%s\n",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    "-",
+				    typename);
+				continue;
+			}
+
+			for (l = ZB_TOTAL - 1; l >= -1; l--) {
+				level = (l == -1 ? ZB_TOTAL : l);
+				zb = &zcb->zcb_type_new[level][t][i];
+
+				if (zb->zb_asize == 0)
+					continue;
+
+				if (level != ZB_TOTAL && t < DMU_OT_NUMTYPES &&
+				    (level > 0 || DMU_OT_IS_METADATA(t))) {
+					mdstats->zb_count += zb->zb_count;
+					mdstats->zb_lsize += zb->zb_lsize;
+					mdstats->zb_psize += zb->zb_psize;
+					mdstats->zb_asize += zb->zb_asize;
+					mdstats->zb_gangs += zb->zb_gangs;
+				}
+
+				if (dump_opt['Q'] < 3 && level != ZB_TOTAL)
+					continue;
+
+				if (level == 0 && zb->zb_asize ==
+				    zcb->zcb_type_new[ZB_TOTAL][t][i].zb_asize)
+					continue;
+
+				zdb_nicenum(zb->zb_count, csize,
+				    sizeof (csize));
+				zdb_nicenum(zb->zb_lsize, lsize,
+				    sizeof (lsize));
+				zdb_nicenum(zb->zb_psize, psize,
+				    sizeof (psize));
+				zdb_nicenum(zb->zb_asize, asize,
+				    sizeof (asize));
+				zdb_nicenum(zb->zb_asize / zb->zb_count, avg,
+				    sizeof (avg));
+				zdb_nicenum(zb->zb_gangs, gang, sizeof (gang));
+
+				(void) printf("%6s\t%5s\t%5s\t%5s\t%5s"
+				    "\t%5.2f\t%6.2f\t",
+				    csize, lsize, psize, asize, avg,
+				    (double)zb->zb_lsize / zb->zb_psize,
+				    100.0 * zb->zb_asize / (&zcb->zcb_type_new[ZB_TOTAL][ZDB_OT_TOTAL][i])->zb_asize);
+
+				if (level == ZB_TOTAL)
+					(void) printf("%s\n", typename);
+				else
+					(void) printf("    L%d %s\n",
+					    level, typename);
+
+				if (dump_opt['Q'] >= 3 && zb->zb_gangs > 0) {
+					(void) printf("\t number of ganged "
+					    "blocks: %s\n", gang);
+				}
+
+				if (dump_opt['Q'] >= 4) {
+					(void) printf("psize "
+					    "(in 512-byte sectors): "
+					    "number of blocks\n");
+					dump_histogram(zb->zb_psize_histogram,
+					    PSIZE_HISTO_SIZE, 0);
+				}
+			}
+		}
+		zdb_nicenum(mdstats->zb_count, csize,
+		    sizeof (csize));
+		zdb_nicenum(mdstats->zb_lsize, lsize,
+		    sizeof (lsize));
+		zdb_nicenum(mdstats->zb_psize, psize,
+		    sizeof (psize));
+		zdb_nicenum(mdstats->zb_asize, asize,
+		    sizeof (asize));
+		zdb_nicenum(mdstats->zb_asize / (mdstats->zb_count == 0 ? 1 : mdstats->zb_count), avg,
+		    sizeof (avg));
+		zdb_nicenum(mdstats->zb_gangs, gang, sizeof (gang));
+
+		(void) printf("%6s\t%5s\t%5s\t%5s\t%5s"
+		    "\t%5.2f\t%6.2f\t",
+		    csize, lsize, psize, asize, avg,
+		    (double)mdstats->zb_lsize / mdstats->zb_psize,
+		    100.0 * mdstats->zb_asize / tzb->zb_asize);
+		(void) printf("%s\n", "Metadata Total");
+
+		/* Output a table summarizing block sizes in the pool */
+		if (dump_opt['Q'] >= 2) {
+			dump_size_histograms(zcb,i);
+		}
+
+		umem_free(mdstats, sizeof (zfs_blkstat_t));
+		}
 	}
 
 	(void) printf("\n");
