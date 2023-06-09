@@ -1039,6 +1039,8 @@ zcommon_init(void)
 
 	fletcher_4_init();
 
+	lz4_init();
+
 	return (0);
 }
 
@@ -1046,6 +1048,7 @@ static void __exit
 zcommon_fini(void)
 {
 	fletcher_4_fini();
+	lz4_fini();
 	kfpu_fini();
 }
 
