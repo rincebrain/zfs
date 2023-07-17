@@ -85,6 +85,8 @@
 #include <libnvpair.h>
 #include <libzutil.h>
 
+#include <editline/readline.h>
+
 #include "zdb.h"
 
 #define	ZDB_COMPRESS_NAME(idx) ((idx) < ZIO_COMPRESS_FUNCTIONS ?	\
@@ -165,6 +167,8 @@ static int flagbits[256];
 static uint64_t max_inflight_bytes = 256 * 1024 * 1024; /* 256MB */
 static int leaked_objects = 0;
 static range_tree_t *mos_refd_objs;
+
+static int interactive = 0;
 
 static void snprintf_blkptr_compact(char *, size_t, const blkptr_t *,
     boolean_t);
@@ -915,7 +919,8 @@ usage(void)
 	(void) fprintf(stderr, "Specify an option more than once (e.g. -bb) "
 	    "to make only that option verbose\n");
 	(void) fprintf(stderr, "Default is to dump everything non-verbosely\n");
-	exit(1);
+	if (!interactive)
+		exit(1);
 }
 
 static void
@@ -8732,45 +8737,30 @@ zdb_numeric(char *str)
 	return (B_TRUE);
 }
 
-int
-main(int argc, char **argv)
-{
+static int mainloop(int argc, char** argv, char** searchdirs);
+static int prompt(void);
+
+spa_t *spa = NULL;
+objset_t *os = NULL;
+int dump_all = 1;
+int verbose = 0;
+int error = 0;
+int nsearch = 0;
+char *target, *target_pool, dsname[ZFS_MAX_DATASET_NAME_LEN];
+nvlist_t *policy = NULL;
+uint64_t max_txg = UINT64_MAX;
+int64_t objset_id = -1;
+uint64_t object;
+int flags = ZFS_IMPORT_MISSING_LOG;
+int zdb_rewind = ZPOOL_NEVER_REWIND;
+char *spa_config_path_env, *objset_str;
+boolean_t target_is_spa = B_TRUE, dataset_lookup = B_FALSE;
+nvlist_t *cfg = NULL;
+
+static int parseopts(int argc, char** argv, char*** searchdirsp) {
+	int ret = 0;
 	int c;
-	spa_t *spa = NULL;
-	objset_t *os = NULL;
-	int dump_all = 1;
-	int verbose = 0;
-	int error = 0;
-	char **searchdirs = NULL;
-	int nsearch = 0;
-	char *target, *target_pool, dsname[ZFS_MAX_DATASET_NAME_LEN];
-	nvlist_t *policy = NULL;
-	uint64_t max_txg = UINT64_MAX;
-	int64_t objset_id = -1;
-	uint64_t object;
-	int flags = ZFS_IMPORT_MISSING_LOG;
-	int rewind = ZPOOL_NEVER_REWIND;
-	char *spa_config_path_env, *objset_str;
-	boolean_t target_is_spa = B_TRUE, dataset_lookup = B_FALSE;
-	nvlist_t *cfg = NULL;
-
-	dprintf_setup(&argc, argv);
-
-	/*
-	 * If there is an environment variable SPA_CONFIG_PATH it overrides
-	 * default spa_config_path setting. If -U flag is specified it will
-	 * override this environment variable settings once again.
-	 */
-	spa_config_path_env = getenv("SPA_CONFIG_PATH");
-	if (spa_config_path_env != NULL)
-		spa_config_path = spa_config_path_env;
-
-	/*
-	 * For performance reasons, we set this tunable down. We do so before
-	 * the arg parsing section so that the user can override this value if
-	 * they choose.
-	 */
-	zfs_btree_verify_intensity = 3;
+	char** searchdirs = *searchdirsp;
 
 	struct option long_options[] = {
 		{"ignore-assertions",	no_argument,		NULL, 'A'},
@@ -8804,6 +8794,7 @@ main(int argc, char **argv)
 		{"io-stats",		no_argument,		NULL, 's'},
 		{"simulate-dedup",	no_argument,		NULL, 'S'},
 		{"txg",			required_argument,	NULL, 't'},
+		{"interactive",		no_argument,		NULL, 'T'},
 		{"uberblock",		no_argument,		NULL, 'u'},
 		{"cachefile",		required_argument,	NULL, 'U'},
 		{"verbose",		no_argument,		NULL, 'v'},
@@ -8817,7 +8808,7 @@ main(int argc, char **argv)
 	};
 
 	while ((c = getopt_long(argc, argv,
-	    "AbBcCdDeEFGhiI:kK:lLmMNo:Op:PqrRsSt:uU:vVx:XYyZ",
+	    "AbBcCdDeEFGhiI:kK:lLmMNo:Op:PqrRsSt:TuU:vVx:XYyZ",
 	    long_options, NULL)) != -1) {
 		switch (c) {
 		case 'b':
@@ -8867,6 +8858,7 @@ main(int argc, char **argv)
 				    "of inflight bytes must be greater "
 				    "than 0\n");
 				usage();
+				ret = -1;
 			}
 			break;
 		case 'K':
@@ -8877,8 +8869,10 @@ main(int argc, char **argv)
 			break;
 		case 'o':
 			error = set_global_var(optarg);
-			if (error != 0)
+			if (error != 0) {
 				usage();
+				ret = -1;
+			}
 			break;
 		case 'p':
 			if (searchdirs == NULL) {
@@ -8901,6 +8895,7 @@ main(int argc, char **argv)
 				(void) fprintf(stderr, "incorrect txg "
 				    "specified: %s\n", optarg);
 				usage();
+				ret = -1;
 			}
 			break;
 		case 'U':
@@ -8910,6 +8905,7 @@ main(int argc, char **argv)
 				    "cachefile must be an absolute path "
 				    "(i.e. start with a slash)\n");
 				usage();
+				ret = -1;
 			}
 			break;
 		case 'v':
@@ -8921,12 +8917,93 @@ main(int argc, char **argv)
 		case 'x':
 			vn_dumpdir = optarg;
 			break;
+		case 'T':
+			interactive = 1;
+			break;
 		default:
 			usage();
 			break;
 		}
 	}
+	return (ret);
+}
 
+int
+main(int argc, char **argv)
+{
+	int ret = 0;
+	char **searchdirs = NULL;
+
+	dprintf_setup(&argc, argv);
+
+	/*
+	 * If there is an environment variable SPA_CONFIG_PATH it overrides
+	 * default spa_config_path setting. If -U flag is specified it will
+	 * override this environment variable settings once again.
+	 */
+	spa_config_path_env = getenv("SPA_CONFIG_PATH");
+	if (spa_config_path_env != NULL)
+		spa_config_path = spa_config_path_env;
+
+	/*
+	 * For performance reasons, we set this tunable down. We do so before
+	 * the arg parsing section so that the user can override this value if
+	 * they choose.
+	 */
+	zfs_btree_verify_intensity = 3;
+	
+	parseopts(argc, argv, &searchdirs);
+
+	if (interactive) {
+		while ((ret = prompt()) == 0) {}
+	} else {
+		ret = mainloop(argc, argv, searchdirs);
+	}
+	return ret;
+		
+}
+
+static int prompt() {
+	char **searchdirs = NULL;
+	int ret = 0;
+	
+	for (int i = 0; i < 256; i++) {
+		dump_opt[i] = 0;
+	}
+	char* line = readline("zdb> ");
+	if (!line)
+		return (-1);
+
+	char** args = calloc(sizeof(char*), 128);
+	char* stor = NULL;
+	
+	int count = 1;
+
+	args[count] = strtok_r(line," ",&stor);
+	count++;
+	while (1) {
+		args[count] = strtok_r(NULL," ",&stor);
+		if (args[count] == NULL)
+			break;
+		count++;
+	}
+//	for (int i = 0; i < count; i++) {
+//		printf("DBG: i=%d {%s}\n",i,args[i]);
+//	}
+//	return (-1);
+
+	ret = parseopts(count,args,&searchdirs);
+	if (ret == 0)
+		ret = mainloop(count, args, searchdirs);
+	free(line);
+	free(args);
+
+	return (0);	
+}
+
+static int mainloop(int argc, char** argv, char** searchdirs) {
+	int c = 0;
+	
 	if (!dump_opt['e'] && searchdirs != NULL) {
 		(void) fprintf(stderr, "-p option requires use of -e\n");
 		usage();
@@ -9018,7 +9095,7 @@ main(int argc, char **argv)
 	}
 
 	if (dump_opt['X'] || dump_opt['F'])
-		rewind = ZPOOL_DO_REWIND |
+		zdb_rewind = ZPOOL_DO_REWIND |
 		    (dump_opt['X'] ? ZPOOL_EXTREME_REWIND : 0);
 
 	/* -N implies -d */
@@ -9027,7 +9104,7 @@ main(int argc, char **argv)
 
 	if (nvlist_alloc(&policy, NV_UNIQUE_NAME_TYPE, 0) != 0 ||
 	    nvlist_add_uint64(policy, ZPOOL_LOAD_REQUEST_TXG, max_txg) != 0 ||
-	    nvlist_add_uint32(policy, ZPOOL_LOAD_REWIND_POLICY, rewind) != 0)
+	    nvlist_add_uint32(policy, ZPOOL_LOAD_REWIND_POLICY, zdb_rewind) != 0)
 		fatal("internal error: %s", strerror(ENOMEM));
 
 	error = 0;
