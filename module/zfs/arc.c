@@ -356,6 +356,10 @@ static list_t arc_evict_waiters;
  */
 int zfs_arc_eviction_pct = 200;
 
+static uint_t zfs_arc_evict_timer = 1000;
+
+static uint64_t zfs_arc_evict_last = 0;
+
 /*
  * The number of headers to evict in arc_evict_state_impl() before
  * dropping the sublist lock and evicting from another sublist. A lower
@@ -4225,8 +4229,14 @@ arc_evict_state(arc_state_t *state, uint64_t spa, uint64_t bytes,
 	 * than starting from the tail each time.
 	 */
 	if (zthr_iscurthread(arc_evict_zthr)) {
-		markers = arc_state_evict_markers;
-		ASSERT3S(num_sublists, <=, arc_state_evict_marker_count);
+		if (NSEC2MSEC(gethrtime() - zfs_arc_evict_last) > zfs_arc_evict_timer) {
+			return (0);
+		}
+		else {
+			zfs_arc_evict_last = gethrtime();
+			markers = arc_state_evict_markers;
+			ASSERT3S(num_sublists, <=, arc_state_evict_marker_count);
+		}
 	} else {
 		markers = arc_state_alloc_markers(num_sublists);
 	}
