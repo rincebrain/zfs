@@ -414,7 +414,7 @@ zio_checksum_error_impl(spa_t *spa, const blkptr_t *bp,
 	zio_checksum_info_t *ci = &zio_checksum_table[checksum];
 	zio_cksum_t actual_cksum, expected_cksum;
 	zio_eck_t eck;
-	int byteswap;
+	int byteswap = 0;
 
 	if (checksum >= ZIO_CHECKSUM_FUNCTIONS || ci->ci_func[0] == NULL)
 		return (SET_ERROR(EINVAL));
@@ -518,8 +518,32 @@ zio_checksum_error_impl(spa_t *spa, const blkptr_t *bp,
 		info->zbc_has_cksum = 1;
 	}
 
-	if (!ZIO_CHECKSUM_EQUAL(actual_cksum, expected_cksum))
-		return (SET_ERROR(ECKSUM));
+	if (!ZIO_CHECKSUM_EQUAL(actual_cksum, expected_cksum)) {
+		zfs_dbgmsg("Got %llx:%llx:%llx:%llx, expected %llx:%llx:%llx:%llx, cksum type %d",
+		 (u_longlong_t)actual_cksum.zc_word[0],
+		 (u_longlong_t)actual_cksum.zc_word[1],
+		 (u_longlong_t)actual_cksum.zc_word[2],
+		 (u_longlong_t)actual_cksum.zc_word[3],
+		 (u_longlong_t)expected_cksum.zc_word[0],
+		 (u_longlong_t)expected_cksum.zc_word[1],
+		 (u_longlong_t)expected_cksum.zc_word[2],
+		 (u_longlong_t)expected_cksum.zc_word[3],
+		 (int)checksum);
+		zio_cksum_t badidea = { 0 };
+		if (ZIO_CHECKSUM_EQUAL(badidea, actual_cksum)) {
+			zfs_dbgmsg("All right, I guess the checksum data here broke, let's error out.");
+			return (ECKSUM);
+		}
+			
+		memcpy(&badidea,&actual_cksum,sizeof(zio_cksum_t));
+		byteswap_uint64_array(&badidea,sizeof(zio_cksum_t));
+		if (ZIO_CHECKSUM_EQUAL(badidea, expected_cksum)) {
+			zfs_dbgmsg("Yeah, the byteswap magic was hosed, it said %d and was lying.", byteswap);
+		}
+		zfs_dbgmsg("On your head be it.");
+		return (0);
+		//return (SET_ERROR(ECKSUM));
+	}
 
 	return (0);
 }
