@@ -5640,7 +5640,7 @@ zdb_count_block(zdb_cb_t *zcb, zilog_t *zilog, const blkptr_t *bp,
 	zcb->zcb_asize_len[bin] += BP_GET_ASIZE(bp);
 	zcb->zcb_asize_total += BP_GET_ASIZE(bp);
 
-	for (int i = 0; i <= BP_GET_NDVAS(bp); i++) {
+	for (int i = 0; i < BP_GET_NDVAS(bp); i++) {
 	if (DVA_IS_VALID(&bp->blk_dva[i])) {
 	int vdev = DVA_GET_VDEV(&bp->blk_dva[i]);
 	int bin = highbit64(BP_GET_PSIZE(bp)) - 1;
@@ -7001,8 +7001,8 @@ dump_block_stats(spa_t *spa)
 
 				if (dump_opt['b'] >= 4) {
 					(void) printf("psize "
-					    "(in 512-byte sectors): "
-					    "number of blocks\n");
+					    "ppp(in 512-byte sectors): "
+					    "number of blocks (%d)\n", dump_opt['b']);
 					dump_histogram(zb->zb_psize_histogram,
 					    PSIZE_HISTO_SIZE, 0);
 				}
@@ -7062,6 +7062,8 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 	boolean_t leaks = B_FALSE;
 	int e, c, err;
 	bp_embedded_type_t i;
+
+	int opt_count = dump_opt['Q'];
 
 	zcb = umem_zalloc(sizeof (zdb_cb_t), UMEM_NOFAIL);
 
@@ -7275,7 +7277,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 		    "%10llu\n",
 		    i, (u_longlong_t)zcb->zcb_embedded_blocks[i]);
 
-		if (dump_opt['b'] >= 3) {
+		if (opt_count >= 3) {
 			(void) printf("\t number of (compressed) bytes:  "
 			    "number of bps\n");
 			dump_histogram(zcb->zcb_embedded_histogram[i],
@@ -7311,7 +7313,8 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 		    (longlong_t)vdev_indirect_mapping_num_entries(vim), mem);
 	}
 
-	if (dump_opt['Q'] >= 2) {
+	if (opt_count >= 2) {
+		int psize_notice = 0;
 		int l, t, level;
 		char csize[32], lsize[32], psize[32], asize[32];
 		char avg[32], gang[32];
@@ -7373,7 +7376,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 					mdstats->zb_gangs += zb->zb_gangs;
 				}
 
-				if (dump_opt['Q'] < 3 && level != ZB_TOTAL)
+				if (opt_count < 3 && level != ZB_TOTAL)
 					continue;
 
 				if (level == 0 && zb->zb_asize ==
@@ -7404,17 +7407,18 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 					(void) printf("    L%d %s\n",
 					    level, typename);
 
-				if (dump_opt['b'] >= 3 && zb->zb_gangs > 0) {
+				if (opt_count >= 3 && zb->zb_gangs > 0) {
 					(void) printf("\t number of ganged "
 					    "blocks: %s\n", gang);
 				}
 
-				if (dump_opt['b'] >= 4) {
+				if (opt_count >= 4 && psize_notice == 0) {
 					(void) printf("psize "
-					    "(in 512-byte sectors): "
+					    "qqq(in 512-byte sectors): "
 					    "number of blocks\n");
 					dump_histogram(zb->zb_psize_histogram,
 					    PSIZE_HISTO_SIZE, 0);
+					psize_notice = 1;
 				}
 			}
 		}
@@ -7438,7 +7442,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 		(void) printf("%s\n", "Metadata Total");
 
 		/* Output a table summarizing block sizes in the pool */
-		if (dump_opt['Q'] >= 2) {
+		if (opt_count >= 2) {
 			dump_size_histograms(zcb,-1);
 		}
 
@@ -7447,7 +7451,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 
 	(void) printf("\n");
 
-	if (dump_opt['Q'] >= 1) {
+	if (opt_count >= 1) {
 		for (int i = 0; i < spa->spa_root_vdev->vdev_children; i++) {
 		int l, t, level;
 		char csize[32], lsize[32], psize[32], asize[32];
@@ -7513,7 +7517,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 					mdstats->zb_gangs += zb->zb_gangs;
 				}
 
-				if (dump_opt['Q'] < 3 && level != ZB_TOTAL)
+				if (opt_count < 3 && level != ZB_TOTAL)
 					continue;
 
 				if (level == 0 && zb->zb_asize ==
@@ -7544,18 +7548,19 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 					(void) printf("    L%d %s\n",
 					    level, typename);
 
-				if (dump_opt['Q'] >= 3 && zb->zb_gangs > 0) {
+				if (opt_count >= 3 && zb->zb_gangs > 0) {
 					(void) printf("\t number of ganged "
 					    "blocks: %s\n", gang);
 				}
-
-				if (dump_opt['Q'] >= 4) {
+/*
+				if (opt_count >= 4) {
 					(void) printf("psize "
 					    "(in 512-byte sectors): "
-					    "number of blocks\n");
+					    "number of blocks (meow) (%d)\n", opt_count);
 					dump_histogram(zb->zb_psize_histogram,
 					    PSIZE_HISTO_SIZE, 0);
 				}
+*/
 			}
 		}
 		zdb_nicenum(mdstats->zb_count, csize,
@@ -7578,7 +7583,7 @@ dump_ds_block_stats(spa_t *spa, uint64_t dsobj)
 		(void) printf("%s\n", "Metadata Total");
 
 		/* Output a table summarizing block sizes in the pool */
-		if (dump_opt['Q'] >= 2) {
+		if (opt_count >= 2) {
 			dump_size_histograms(zcb,i);
 		}
 
