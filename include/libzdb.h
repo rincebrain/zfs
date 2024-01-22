@@ -113,17 +113,21 @@ typedef struct sublivelist_verify_block {
 
 
 typedef struct zdb_ctx {
-	uint64_t *zopt_metaslab;
-	unsigned zopt_metaslab_args;
+	/*
+	 * Names shrunk because 80 characters is an insane limit
+	 * in a modern codebase.
+	 */
+	uint64_t *zopt_mslab;
+	unsigned zopt_mslab_args;
 
 	zopt_object_range_t *zopt_object_ranges;
-	unsigned zopt_object_args;
+	unsigned zopt_objargs;
 
 	int leaked_objects;
 } zdb_ctx_t;
 
 const char *zdb_ot_name(dmu_object_type_t type);
-boolean_t zdb_numeric(char* str);
+boolean_t zdb_numeric(char *str);
 int livelist_compare(const void *larg, const void *rarg);
 int libzdb_init(zdb_ctx_t *zctx);
 int libzdb_fini(zdb_ctx_t *zctx);
