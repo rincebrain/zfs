@@ -9411,5 +9411,7 @@ retry_lookup:
 
 	kernel_fini();
 
+	libzdb_fini(zctx);
+
 	return (error);
 }

@@ -56,3 +56,8 @@ int libzdb_init(zdb_ctx_t *zctx) {
 
 	return (0);
 }
+
+int libzdb_fini(zdb_ctx_t *zctx) {
+	(void) zctx;
+	return (0);
+}
