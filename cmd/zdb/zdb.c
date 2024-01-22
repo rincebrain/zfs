@@ -9019,10 +9019,6 @@ main(int argc, char **argv)
 
 	parseopts(argc, argv, &searchdirs);
 
-	if (!dump_opt['e'] && searchdirs != NULL) {
-		(void) fprintf(stderr, "-p option requires use of -e\n");
-		usage();
-	}
 #if defined(_LP64)
 	/*
 	 * ZDB does not typically re-read blocks; therefore limit the ARC
@@ -9054,6 +9050,11 @@ main(int argc, char **argv)
 	 * ZDB should have ability to read spacemaps.
 	 */
 	spa_mode_readable_spacemaps = B_TRUE;
+
+	if (!dump_opt['e'] && searchdirs != NULL) {
+		(void) fprintf(stderr, "-p option requires use of -e\n");
+		usage();
+	}
 
 	kernel_init(SPA_MODE_READ);
 
