@@ -50,3 +50,9 @@ livelist_compare(const void *larg, const void *rarg)
 	}
 	return (0);
 }
+
+int libzdb_init(zdb_ctx_t *zctx) {
+	memset(zctx, 0, sizeof (zdb_ctx_t));
+
+	return (0);
+}

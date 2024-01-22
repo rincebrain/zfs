@@ -85,9 +85,6 @@
 #define	ZDB_FLAG_VERBOSE	0x0080
 
 
-typedef struct zdb_ctx {
-} zdb_ctx_t;
-
 typedef struct zopt_object_range {
 	uint64_t zor_obj_start;
 	uint64_t zor_obj_end;
@@ -114,5 +111,17 @@ typedef struct sublivelist_verify_block {
 	uint64_t svb_allocated_txg;
 } sublivelist_verify_block_t;
 
+
+typedef struct zdb_ctx {
+	uint64_t *zopt_metaslab;
+	unsigned zopt_metaslab_args;
+
+	zopt_object_range_t *zopt_object_ranges;
+	unsigned zopt_object_args;
+
+	int leaked_objects;
+} zdb_ctx_t;
+
 const char *zdb_ot_name(dmu_object_type_t type);
 int livelist_compare(const void *larg, const void *rarg);
+int libzdb_init(zdb_ctx_t *zctx);
