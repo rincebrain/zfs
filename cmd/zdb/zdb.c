@@ -8779,66 +8779,16 @@ zdb_embedded_block(char *thing)
 	free(buf);
 }
 
-/* check for valid hex or decimal numeric string */
-static boolean_t
-zdb_numeric(char *str)
-{
-	int i = 0;
+static int dump_all = 1;
+static int verbose = 0;
+static uint64_t max_txg = UINT64_MAX;
+static int flags = ZFS_IMPORT_MISSING_LOG;
+static int nsearch = 0;
 
-	if (strlen(str) == 0)
-		return (B_FALSE);
-	if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0)
-		i = 2;
-	for (; i < strlen(str); i++) {
-		if (!isxdigit(str[i]))
-			return (B_FALSE);
-	}
-	return (B_TRUE);
-}
-
-int
-main(int argc, char **argv)
-{
-	zdb_ctx_t *zctx = calloc(1, sizeof (zdb_ctx_t));
-	
-	int c;
-	spa_t *spa = NULL;
-	objset_t *os = NULL;
-	int dump_all = 1;
-	int verbose = 0;
+static int parseopts(int argc, char** argv, char*** searchdirsp) {
 	int error = 0;
-	char **searchdirs = NULL;
-	int nsearch = 0;
-	char *target, *target_pool, dsname[ZFS_MAX_DATASET_NAME_LEN];
-	nvlist_t *policy = NULL;
-	uint64_t max_txg = UINT64_MAX;
-	int64_t objset_id = -1;
-	uint64_t object;
-	int flags = ZFS_IMPORT_MISSING_LOG;
-	int rewind = ZPOOL_NEVER_REWIND;
-	char *spa_config_path_env, *objset_str;
-	boolean_t target_is_spa = B_TRUE, dataset_lookup = B_FALSE;
-	nvlist_t *cfg = NULL;
-
-	dprintf_setup(&argc, argv);
-	
-	(void) libzdb_init(zctx);
-
-	/*
-	 * If there is an environment variable SPA_CONFIG_PATH it overrides
-	 * default spa_config_path setting. If -U flag is specified it will
-	 * override this environment variable settings once again.
-	 */
-	spa_config_path_env = getenv("SPA_CONFIG_PATH");
-	if (spa_config_path_env != NULL)
-		spa_config_path = spa_config_path_env;
-
-	/*
-	 * For performance reasons, we set this tunable down. We do so before
-	 * the arg parsing section so that the user can override this value if
-	 * they choose.
-	 */
-	zfs_btree_verify_intensity = 3;
+	int c = 0;
+	char **searchdirs = *searchdirsp;
 
 	struct option long_options[] = {
 		{"ignore-assertions",	no_argument,		NULL, 'A'},
@@ -8937,6 +8887,7 @@ main(int argc, char **argv)
 				    "of inflight bytes must be greater "
 				    "than 0\n");
 				usage();
+				error = -1;
 			}
 			break;
 		case 'K':
@@ -8947,8 +8898,10 @@ main(int argc, char **argv)
 			break;
 		case 'o':
 			error = set_global_var(optarg);
-			if (error != 0)
+			if (error != 0) {
 				usage();
+				error = -1;
+			}
 			break;
 		case 'p':
 			if (searchdirs == NULL) {
@@ -8971,6 +8924,7 @@ main(int argc, char **argv)
 				(void) fprintf(stderr, "incorrect txg "
 				    "specified: %s\n", optarg);
 				usage();
+				error = -1;
 			}
 			break;
 		case 'U':
@@ -8980,6 +8934,7 @@ main(int argc, char **argv)
 				    "cachefile must be an absolute path "
 				    "(i.e. start with a slash)\n");
 				usage();
+				error = -1;
 			}
 			break;
 		case 'v':
@@ -8993,9 +8948,53 @@ main(int argc, char **argv)
 			break;
 		default:
 			usage();
+			error = -1;
 			break;
 		}
 	}
+	return (error);
+}
+
+int
+main(int argc, char **argv)
+{
+	zdb_ctx_t *zctx = calloc(1, sizeof (zdb_ctx_t));
+	
+	spa_t *spa = NULL;
+	objset_t *os = NULL;
+	int error = 0;
+	int c = 0;
+	char **searchdirs = NULL;
+	char *target, *target_pool, dsname[ZFS_MAX_DATASET_NAME_LEN];
+	nvlist_t *policy = NULL;
+	int64_t objset_id = -1;
+	uint64_t object;
+	int rewind = ZPOOL_NEVER_REWIND;
+	char *spa_config_path_env, *objset_str;
+	boolean_t target_is_spa = B_TRUE, dataset_lookup = B_FALSE;
+	nvlist_t *cfg = NULL;
+
+	dprintf_setup(&argc, argv);
+	
+	(void) libzdb_init(zctx);
+
+	/*
+	 * If there is an environment variable SPA_CONFIG_PATH it overrides
+	 * default spa_config_path setting. If -U flag is specified it will
+	 * override this environment variable settings once again.
+	 */
+	spa_config_path_env = getenv("SPA_CONFIG_PATH");
+	if (spa_config_path_env != NULL)
+		spa_config_path = spa_config_path_env;
+
+	/*
+	 * For performance reasons, we set this tunable down. We do so before
+	 * the arg parsing section so that the user can override this value if
+	 * they choose.
+	 */
+	zfs_btree_verify_intensity = 3;
+
+	parseopts(argc, argv, &searchdirs);
 
 	if (!dump_opt['e'] && searchdirs != NULL) {
 		(void) fprintf(stderr, "-p option requires use of -e\n");

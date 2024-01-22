@@ -123,6 +123,7 @@ typedef struct zdb_ctx {
 } zdb_ctx_t;
 
 const char *zdb_ot_name(dmu_object_type_t type);
+boolean_t zdb_numeric(char* str);
 int livelist_compare(const void *larg, const void *rarg);
 int libzdb_init(zdb_ctx_t *zctx);
 int libzdb_fini(zdb_ctx_t *zctx);

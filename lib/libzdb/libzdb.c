@@ -61,3 +61,20 @@ int libzdb_fini(zdb_ctx_t *zctx) {
 	(void) zctx;
 	return (0);
 }
+
+/* check for valid hex or decimal numeric string */
+boolean_t
+zdb_numeric(char *str)
+{
+	int i = 0;
+
+	if (strlen(str) == 0)
+		return (B_FALSE);
+	if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0)
+		i = 2;
+	for (; i < strlen(str); i++) {
+		if (!isxdigit(str[i]))
+			return (B_FALSE);
+	}
+	return (B_TRUE);
+}
