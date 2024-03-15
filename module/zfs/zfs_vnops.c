@@ -1068,6 +1068,7 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 	uint_t		inblksz;
 	uint64_t	clear_setid_bits_txg = 0;
 	uint64_t	last_synced_txg = 0;
+	int 		busy = 0;
 
 	inoff = *inoffp;
 	outoff = *outoffp;
@@ -1187,6 +1188,12 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		}
 	}
 
+
+	if (zn_has_cached_data(inzp, inoff, inoff + size - 1)) {
+redo:
+		zn_flush_cached_data(inzp, B_TRUE);
+	}
+
 	/*
 	 * Maintain predictable lock order.
 	 */
@@ -1200,6 +1207,35 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		    RL_WRITER);
 		inlr = zfs_rangelock_enter(&inzp->z_rangelock, inoff, len,
 		    RL_READER);
+	}
+
+	if (zn_has_cached_data(inzp, inoff, inoff + size - 1)) {
+		if (busy == 0) {
+			/*
+			 * We somehow dirtied between flushing and taking the lock, try again
+			 */
+	                busy = 1;
+	                /*
+	                 * If we have wait_dirty set, we might as well try a forced flush
+	                 * here too.
+	                 */
+			if (zfs_bclone_wait_dirty) {
+				last_synced_txg = spa_last_synced_txg(dmu_objset_spa(inos));
+				txg_wait_synced(dmu_objset_pool(inos),
+				    last_synced_txg + 1);
+			}
+
+			zfs_rangelock_exit(outlr);
+			zfs_rangelock_exit(inlr);
+			goto redo;
+		}
+		else {
+			/*
+			 * We tried once, it's churning too much, give up.
+			 */
+			error = EAGAIN;
+			goto unlock;
+		}
 	}
 
 	inblksz = inzp->z_blksz;
@@ -1306,6 +1342,8 @@ zfs_clone_range(znode_t *inzp, uint64_t *inoffp, znode_t *outzp,
 		}
 
 		nbps = maxblocks;
+
+
 		last_synced_txg = spa_last_synced_txg(dmu_objset_spa(inos));
 		error = dmu_read_l0_bps(inos, inzp->z_id, inoff, size, bps,
 		    &nbps);
