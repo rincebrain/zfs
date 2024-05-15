@@ -73,16 +73,19 @@ zstream_do_recompress(int argc, char *argv[])
 	zio_cksum_t stream_cksum;
 	int c;
 	int level = -1;
+	
+	char evil[256];
 
 	while ((c = getopt(argc, argv, "l:")) != -1) {
 		switch (c) {
 		case 'l':
-			if (sscanf(optarg, "%d", &level) != 0) {
+			if (sscanf(optarg, "%d", &level) != 1) {
 				fprintf(stderr,
 				    "failed to parse level '%s'\n",
 				    optarg);
 				zstream_usage();
 			}
+			memcpy(evil,optarg,strlen(optarg));
 			break;
 		case '?':
 			(void) fprintf(stderr, "invalid option '%c'\n",
@@ -91,6 +94,8 @@ zstream_do_recompress(int argc, char *argv[])
 			break;
 		}
 	}
+
+	fprintf(stderr,"wtf %s %d\n", evil, level);
 
 	argc -= optind;
 	argv += optind;
