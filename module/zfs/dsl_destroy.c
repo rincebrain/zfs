@@ -51,7 +51,7 @@
 
 extern int zfs_snapshot_history_enabled;
 
-static int zfs_old_destroy = 0;
+static int zfs_old_destroy = 1;
 
 typedef struct dmu_snapshots_destroy_arg {
        nvlist_t *dsda_snaps;
