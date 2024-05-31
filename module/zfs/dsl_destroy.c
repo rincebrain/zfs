@@ -51,6 +51,16 @@
 
 extern int zfs_snapshot_history_enabled;
 
+static int zfs_old_destroy = 0;
+
+typedef struct dmu_snapshots_destroy_arg {
+       nvlist_t *dsda_snaps;
+       nvlist_t *dsda_successful_snaps;
+       boolean_t dsda_defer;
+       nvlist_t *dsda_errlist;
+} dmu_snapshots_destroy_arg_t;
+
+
 int
 dsl_destroy_snapshot_check_impl(dsl_dataset_t *ds, boolean_t defer)
 {
@@ -86,6 +96,101 @@ dsl_destroy_snapshot_check_impl(dsl_dataset_t *ds, boolean_t defer)
 
 	return (0);
 }
+
+static int
+dsl_destroy_snapshot_check_old(void *arg, dmu_tx_t *tx)
+{
+        dmu_snapshots_destroy_arg_t *dsda = arg;
+        dsl_pool_t *dp = dmu_tx_pool(tx);
+        nvpair_t *pair;
+        int error = 0;
+
+        if (!dmu_tx_is_syncing(tx))
+                return (0);
+
+        for (pair = nvlist_next_nvpair(dsda->dsda_snaps, NULL);
+            pair != NULL; pair = nvlist_next_nvpair(dsda->dsda_snaps, pair)) {
+                dsl_dataset_t *ds;
+
+                error = dsl_dataset_hold(dp, nvpair_name(pair),
+                    FTAG, &ds);
+
+                /*
+                 * If the snapshot does not exist, silently ignore it
+                 * (it's "already destroyed").
+                 */
+                if (error == ENOENT)
+                        continue;
+
+                if (error == 0) {
+                        error = dsl_destroy_snapshot_check_impl(ds,
+                            dsda->dsda_defer);
+                        dsl_dataset_rele(ds, FTAG);
+                }
+
+                if (error == 0) {
+                        fnvlist_add_boolean(dsda->dsda_successful_snaps,
+                            nvpair_name(pair));
+                } else {
+                        fnvlist_add_int32(dsda->dsda_errlist,
+                            nvpair_name(pair), error);
+                }
+        }
+
+        pair = nvlist_next_nvpair(dsda->dsda_errlist, NULL);
+        if (pair != NULL)
+                return (fnvpair_value_int32(pair));
+
+        return (0);
+}
+
+static void
+dsl_destroy_snapshot_sync_old(void *arg, dmu_tx_t *tx)
+{
+        dmu_snapshots_destroy_arg_t *dsda = arg;
+        dsl_pool_t *dp = dmu_tx_pool(tx);
+        nvpair_t *pair;
+
+        for (pair = nvlist_next_nvpair(dsda->dsda_successful_snaps, NULL);
+            pair != NULL;
+            pair = nvlist_next_nvpair(dsda->dsda_successful_snaps, pair)) {
+                dsl_dataset_t *ds;
+
+                VERIFY0(dsl_dataset_hold(dp, nvpair_name(pair), FTAG, &ds));
+
+                dsl_destroy_snapshot_sync_impl(ds, dsda->dsda_defer, tx);
+                zvol_remove_minors(dp->dp_spa, nvpair_name(pair), B_TRUE);
+                dsl_dataset_rele(ds, FTAG);
+        }
+}
+
+static int
+dsl_destroy_snapshots_nvl_old(nvlist_t *snaps, boolean_t defer,
+    nvlist_t *errlist)
+{
+        dmu_snapshots_destroy_arg_t dsda;
+        int error;
+        nvpair_t *pair;
+
+        pair = nvlist_next_nvpair(snaps, NULL);
+        if (pair == NULL)
+                return (0);
+
+        dsda.dsda_snaps = snaps;
+        VERIFY0(nvlist_alloc(&dsda.dsda_successful_snaps,
+            NV_UNIQUE_NAME, KM_SLEEP));
+        dsda.dsda_defer = defer;
+        dsda.dsda_errlist = errlist;
+
+        error = dsl_sync_task(nvpair_name(pair),
+            dsl_destroy_snapshot_check_old, dsl_destroy_snapshot_sync_old,
+            &dsda, 0, ZFS_SPACE_CHECK_NONE);
+        fnvlist_free(dsda.dsda_successful_snaps);
+
+        return (error);
+}
+
+
 
 int
 dsl_destroy_snapshot_check(void *arg, dmu_tx_t *tx)
@@ -597,8 +702,8 @@ dsl_destroy_snapshot_sync(void *arg, dmu_tx_t *tx)
  * On failure, no snaps will be destroyed, the errlist will be filled in,
  * and this will return an errno.
  */
-int
-dsl_destroy_snapshots_nvl(nvlist_t *snaps, boolean_t defer,
+static int
+dsl_destroy_snapshots_nvl_new(nvlist_t *snaps, boolean_t defer,
     nvlist_t *errlist)
 {
 	if (nvlist_next_nvpair(snaps, NULL) == NULL)
@@ -685,6 +790,15 @@ dsl_destroy_snapshots_nvl(nvlist_t *snaps, boolean_t defer,
 	}
 	fnvlist_free(result);
 	return (rv);
+}
+
+
+int
+dsl_destroy_snapshots_nvl(nvlist_t *snaps, boolean_t defer,
+    nvlist_t *errlist) {
+    if (zfs_old_destroy)
+    	return (dsl_destroy_snapshots_nvl_old(snaps,defer,errlist));
+    return (dsl_destroy_snapshots_nvl_new(snaps,defer,errlist));
 }
 
 int
@@ -1281,6 +1395,9 @@ dsl_destroy_inconsistent(const char *dsname, void *arg)
 
 
 #if defined(_KERNEL)
+ZFS_MODULE_PARAM(zfs, zfs_, old_destroy, UINT, ZMOD_RW,
+	"Use old destroy code");
+
 EXPORT_SYMBOL(dsl_destroy_head);
 EXPORT_SYMBOL(dsl_destroy_head_sync_impl);
 EXPORT_SYMBOL(dsl_dataset_user_hold_check_one);
