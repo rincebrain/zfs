@@ -1761,12 +1761,20 @@ zfs_vget(struct super_block *sb, struct inode **ipp, fid_t *fidp)
 		return (err);
 	/* A zero fid_gen means we are in the .zfs control directories */
 	if (fid_gen == 0 &&
-	    (object == ZFSCTL_INO_ROOT || object == ZFSCTL_INO_SNAPDIR)) {
+	    (object == ZFSCTL_INO_ROOT || object == ZFSCTL_INO_SNAPDIR || object > ZFSCTL_INO_ZDBDIRLIMIT)) {
 		*ipp = zfsvfs->z_ctldir;
 		ASSERT(*ipp != NULL);
 		if (object == ZFSCTL_INO_SNAPDIR) {
-			VERIFY(zfsctl_root_lookup(*ipp, "snapshot", ipp,
-			    0, kcred, NULL, NULL) == 0);
+			VERIFY0(zfsctl_root_lookup(*ipp, ZFS_SNAPDIR_NAME, ipp,
+			    0, kcred, NULL, NULL));
+		} else if (object == ZFSCTL_INO_ZDBDIR) {
+			VERIFY0(zfsctl_root_lookup(*ipp, ZFS_ZDBDIR_NAME, ipp,
+			    0, kcred, NULL, NULL));
+		} else if (object < ZFSCTL_INO_ZDBDIR && ZFSCTL_INO_ZDBDIRLIMIT) {
+			zfs_dbgmsg("Bees.");
+			char dummy[128];
+			snprintf(dummy, 128, "%lld", object);
+			VERIFY0(zfsctl_zdbdir_lookup(*ipp, dummy, ipp, 0, kcred, NULL, NULL));
 		} else {
 			/*
 			 * Must have an existing ref, so igrab()

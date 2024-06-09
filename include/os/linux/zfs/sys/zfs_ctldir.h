@@ -39,6 +39,7 @@
 #define	ZFS_CTLDIR_NAME		".zfs"
 #define	ZFS_SNAPDIR_NAME	"snapshot"
 #define	ZFS_SHAREDIR_NAME	"shares"
+#define	ZFS_ZDBDIR_NAME		"zdb"
 
 #define	zfs_has_ctldir(zdp)	\
 	((zdp)->z_id == ZTOZSB(zdp)->z_root && \
@@ -68,6 +69,9 @@ extern int zfsctl_root_lookup(struct inode *dip, const char *name,
 extern int zfsctl_snapdir_lookup(struct inode *dip, const char *name,
     struct inode **ipp, int flags, cred_t *cr, int *direntflags,
     pathname_t *realpnp);
+extern int zfsctl_zdbdir_lookup(struct inode *dip, const char *name,
+    struct inode **ipp, int flags, cred_t *cr, int *direntflags,
+    pathname_t *realpnp);
 extern int zfsctl_snapdir_rename(struct inode *sdip, const char *sname,
     struct inode *tdip, const char *tname, cred_t *cr, int flags);
 extern int zfsctl_snapdir_remove(struct inode *dip, const char *name,
@@ -95,8 +99,11 @@ extern int zfsctl_shares_lookup(struct inode *dip, char *name,
  */
 #define	ZFSCTL_INO_ROOT		0x0000FFFFFFFFFFFFULL
 #define	ZFSCTL_INO_SHARES	0x0000FFFFFFFFFFFEULL
-#define	ZFSCTL_INO_SNAPDIR	0x0000FFFFFFFFFFFDULL
-#define	ZFSCTL_INO_SNAPDIRS	0x0000FFFFFFFFFFFCULL
+#define	ZFSCTL_INO_SNAPDIR	0x0000FFFFFFFFFFFBULL
+#define	ZFSCTL_INO_SNAPDIRS	0x0000FFFFFFFFFFFAULL
+#define	ZFSCTL_INO_ZDBDIR	0x0000EFFFFFFFFFFFULL
+#define	ZFSCTL_INO_ZDBDIROBJ	0x0000EFFFFFFFFFFEULL
+#define	ZFSCTL_INO_ZDBDIRLIMIT	0x0000DFFFFFFFFFFFULL
 
 #define	ZFSCTL_EXPIRE_SNAPSHOT	300
 

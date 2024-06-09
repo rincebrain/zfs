@@ -1704,7 +1704,7 @@ zfs_getattr_fast(zidmap_t *user_ns, struct inode *ip, struct kstat *sp)
 	 */
 	if (zfsvfs->z_issnap) {
 		if (ip->i_sb->s_root->d_inode == ip)
-			sp->ino = ZFSCTL_INO_SNAPDIRS -
+			sp->ino = ZFSCTL_INO_SNAPDIR -
 			    dmu_objset_id(zfsvfs->z_os);
 	}
 

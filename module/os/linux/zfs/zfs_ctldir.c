@@ -71,6 +71,7 @@
  * as that used by the parent zfsvfs_t to make NFS happy.
  */
 
+#include <sys/dbuf.h>
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/time.h>
@@ -111,6 +112,7 @@ static krwlock_t zfs_snapshot_lock;
  */
 int zfs_expire_snapshot = ZFSCTL_EXPIRE_SNAPSHOT;
 static int zfs_admin_snapshot = 0;
+extern int zfs_zdbdir_visible;
 
 typedef struct {
 	char		*se_name;	/* full snapshot name */
@@ -470,7 +472,7 @@ zfsctl_is_node(struct inode *ip)
 boolean_t
 zfsctl_is_snapdir(struct inode *ip)
 {
-	return (zfsctl_is_node(ip) && (ip->i_ino <= ZFSCTL_INO_SNAPDIRS));
+	return (zfsctl_is_node(ip) && (ip->i_ino < ZFSCTL_INO_SNAPDIR) && (ip->i_ino > ZFSCTL_INO_ZDBDIR));
 }
 
 /*
@@ -562,11 +564,11 @@ zfsctl_inode_lookup(zfsvfs_t *zfsvfs, uint64_t id,
 		if (ip)
 			break;
 
-		if (id <= ZFSCTL_INO_SNAPDIRS && !creation) {
+		if (id <= ZFSCTL_INO_SNAPDIR && !creation && id > ZFSCTL_INO_ZDBDIR) {
 			pool = dmu_objset_pool(zfsvfs->z_os);
 			dsl_pool_config_enter(pool, FTAG);
 			if (!dsl_dataset_hold_obj(pool,
-			    ZFSCTL_INO_SNAPDIRS - id, FTAG, &snap_ds)) {
+			    ZFSCTL_INO_SNAPDIR - id, FTAG, &snap_ds)) {
 				creation = dsl_get_creation(snap_ds);
 				dsl_dataset_rele(snap_ds, FTAG);
 			}
@@ -667,7 +669,7 @@ zfsctl_snapdir_fid(struct inode *ip, fid_t *fidp)
 	}
 
 	object = ip->i_ino;
-	objsetid = ZFSCTL_INO_SNAPDIRS - ip->i_ino;
+	objsetid = ZFSCTL_INO_SNAPDIR - ip->i_ino;
 	zfid->zf_len = LONG_FID_LEN;
 
 	dentry = d_obtain_alias(igrab(ip));
@@ -818,7 +820,17 @@ zfsctl_root_lookup(struct inode *dip, const char *name, struct inode **ipp,
 	} else if (strcmp(name, ZFS_SHAREDIR_NAME) == 0) {
 		*ipp = zfsctl_inode_lookup(zfsvfs, ZFSCTL_INO_SHARES,
 		    &zpl_fops_shares, &zpl_ops_shares);
+	} else if (strcmp(name, ZFS_ZDBDIR_NAME) == 0) {
+		if (zfs_zdbdir_visible) {
+			*ipp = zfsctl_inode_lookup(zfsvfs, ZFSCTL_INO_ZDBDIR,
+			    &zpl_fops_zdbdir, &zpl_ops_zdbdir);
+			zfs_dbgmsg("Column A.");
+		} else {
+			*ipp = NULL;
+			zfs_dbgmsg("Column B.");
+		}
 	} else {
+		zfs_dbgmsg("Bees.");
 		*ipp = NULL;
 	}
 
@@ -851,10 +863,375 @@ zfsctl_snapdir_lookup(struct inode *dip, const char *name, struct inode **ipp,
 		return (error);
 	}
 
-	*ipp = zfsctl_inode_lookup(zfsvfs, ZFSCTL_INO_SNAPDIRS - id,
+	*ipp = zfsctl_inode_lookup(zfsvfs, ZFSCTL_INO_SNAPDIR - id,
 	    &simple_dir_operations, &simple_dir_inode_operations);
 	if (*ipp == NULL)
 		error = SET_ERROR(ENOENT);
+
+	zfs_exit(zfsvfs, FTAG);
+
+	return (error);
+}
+
+struct zdb_data {
+	uint64_t os;
+	uint64_t id;
+	uint64_t orig_id;
+	struct inode *inp;
+};
+
+static int print_meta(struct seq_file *seq, struct zdb_data *mydata) {
+	return (0);
+}
+
+#define nicenum(src, dst, n) snprintf(dst, n, "%lld", (u_longlong_t)src);
+
+static const char *
+zdb_ot_name(dmu_object_type_t type)
+{
+        if (type < DMU_OT_NUMTYPES)
+                return (dmu_ot[type].ot_name);
+        else if ((type & DMU_OT_NEWTYPE) &&
+            ((type & DMU_OT_BYTESWAP_MASK) < DMU_BSWAP_NUMFUNCS))
+                return (dmu_ot_byteswap[type & DMU_OT_BYTESWAP_MASK].ob_name);
+        else
+                return ("UNKNOWN");
+}
+
+static uint64_t
+blkid2offset(const dnode_phys_t *dnp, const blkptr_t *bp,
+    const zbookmark_phys_t *zb)
+{
+        if (dnp == NULL) {
+                ASSERT(zb->zb_level < 0);
+                if (zb->zb_object == 0)
+                        return (zb->zb_blkid);
+                return (zb->zb_blkid * BP_GET_LSIZE(bp));
+        }
+
+        ASSERT(zb->zb_level >= 0);
+
+        return ((zb->zb_blkid <<
+            (zb->zb_level * (dnp->dn_indblkshift - SPA_BLKPTRSHIFT))) *
+            dnp->dn_datablkszsec << SPA_MINBLOCKSHIFT);
+}
+
+
+static void
+snprintf_blkptr_compact(char *blkbuf, size_t buflen, const blkptr_t *bp,
+    boolean_t bp_freed)
+{
+        const dva_t *dva = bp->blk_dva;
+        int ndvas = BP_GET_NDVAS(bp);
+        int i;
+
+        if (1) {
+                snprintf_blkptr(blkbuf, buflen, bp);
+                if (bp_freed) {
+                        (void) snprintf(blkbuf + strlen(blkbuf),
+                            buflen - strlen(blkbuf), " %s", "FREE");
+                }
+                return;
+        }
+
+        if (BP_IS_EMBEDDED(bp)) {
+                (void) sprintf(blkbuf,
+                    "EMBEDDED et=%u %llxL/%llxP B=%llu",
+                    (int)BPE_GET_ETYPE(bp),
+                    (u_longlong_t)BPE_GET_LSIZE(bp),
+                    (u_longlong_t)BPE_GET_PSIZE(bp),
+                    (u_longlong_t)BP_GET_LOGICAL_BIRTH(bp));
+                return;
+        }
+
+        blkbuf[0] = '\0';
+
+        for (i = 0; i < ndvas; i++)
+                (void) snprintf(blkbuf + strlen(blkbuf),
+                    buflen - strlen(blkbuf), "%llu:%llx:%llx ",
+                    (u_longlong_t)DVA_GET_VDEV(&dva[i]),
+                    (u_longlong_t)DVA_GET_OFFSET(&dva[i]),
+                    (u_longlong_t)DVA_GET_ASIZE(&dva[i]));
+
+        if (BP_IS_HOLE(bp)) {
+                (void) snprintf(blkbuf + strlen(blkbuf),
+                    buflen - strlen(blkbuf),
+                    "%llxL B=%llu",
+                    (u_longlong_t)BP_GET_LSIZE(bp),
+                    (u_longlong_t)BP_GET_LOGICAL_BIRTH(bp));
+        } else {
+                (void) snprintf(blkbuf + strlen(blkbuf),
+                    buflen - strlen(blkbuf),
+                    "%llxL/%llxP F=%llu B=%llu/%llu",
+                    (u_longlong_t)BP_GET_LSIZE(bp),
+                    (u_longlong_t)BP_GET_PSIZE(bp),
+                    (u_longlong_t)BP_GET_FILL(bp),
+                    (u_longlong_t)BP_GET_LOGICAL_BIRTH(bp),
+                    (u_longlong_t)BP_GET_BIRTH(bp));
+                if (bp_freed)
+                        (void) snprintf(blkbuf + strlen(blkbuf),
+                            buflen - strlen(blkbuf), " %s", "FREE");
+                (void) snprintf(blkbuf + strlen(blkbuf),
+                    buflen - strlen(blkbuf),
+                    " cksum=%016llx:%016llx:%016llx:%016llx",
+                    (u_longlong_t)bp->blk_cksum.zc_word[0],
+                    (u_longlong_t)bp->blk_cksum.zc_word[1],
+                    (u_longlong_t)bp->blk_cksum.zc_word[2],
+                    (u_longlong_t)bp->blk_cksum.zc_word[3]);
+        }
+}
+
+static void
+print_indirect(struct seq_file *seq, spa_t *spa, blkptr_t *bp, const zbookmark_phys_t *zb,
+    const dnode_phys_t *dnp)
+{
+        char blkbuf[BP_SPRINTF_LEN];
+        int l;
+
+        if (!BP_IS_EMBEDDED(bp)) {
+                ASSERT3U(BP_GET_TYPE(bp), ==, dnp->dn_type);
+                ASSERT3U(BP_GET_LEVEL(bp), ==, zb->zb_level);
+        }
+
+        (void) seq_printf(seq, "%16llx ", (u_longlong_t)blkid2offset(dnp, bp, zb));
+
+        ASSERT(zb->zb_level >= 0);
+
+        for (l = dnp->dn_nlevels - 1; l >= -1; l--) {
+                if (l == zb->zb_level) {
+                        (void) seq_printf(seq, "L%llx", (u_longlong_t)zb->zb_level);
+                } else {
+                        (void) seq_printf(seq, " ");
+                }
+        }
+
+        snprintf_blkptr_compact(blkbuf, sizeof (blkbuf), bp, B_FALSE);
+        (void) seq_printf(seq,"%s\n", blkbuf);
+}
+
+static int
+visit_indirect(struct seq_file *seq, spa_t *spa, const dnode_phys_t *dnp,
+    blkptr_t *bp, const zbookmark_phys_t *zb)
+{
+        int err = 0;
+
+        if (BP_GET_LOGICAL_BIRTH(bp) == 0)
+                return (0);
+
+        print_indirect(seq, spa, bp, zb, dnp);
+
+        if (BP_GET_LEVEL(bp) > 0 && !BP_IS_HOLE(bp)) {
+                arc_flags_t flags = ARC_FLAG_WAIT;
+                int i;
+                blkptr_t *cbp;
+                int epb = BP_GET_LSIZE(bp) >> SPA_BLKPTRSHIFT;
+                arc_buf_t *buf;
+                uint64_t fill = 0;
+                ASSERT(!BP_IS_REDACTED(bp));
+
+                err = arc_read(NULL, spa, bp, arc_getbuf_func, &buf,
+                    ZIO_PRIORITY_ASYNC_READ, 0, &flags, zb);
+                if (err)
+                        return (err);
+                ASSERT(buf->b_data);
+
+                /* recursively visit blocks below this */
+                cbp = buf->b_data;
+                for (i = 0; i < epb; i++, cbp++) {
+//                	zfs_dbgmsg("Recursion %d of %d", i, epb);
+                        zbookmark_phys_t czb;
+
+                        SET_BOOKMARK(&czb, zb->zb_objset, zb->zb_object,
+                            zb->zb_level - 1,
+                            zb->zb_blkid * epb + i);
+                        err = visit_indirect(seq, spa, dnp, cbp, &czb);
+                        if (err)
+                                break;
+                        fill += BP_GET_FILL(cbp);
+                }
+                if (!err)
+                        ASSERT3U(fill, ==, BP_GET_FILL(bp));
+                arc_buf_destroy(buf, &buf);
+        }
+
+        return (err);
+}
+
+
+static void
+dump_indirect(struct seq_file *seq, dnode_t *dn)
+{
+        dnode_phys_t *dnp = dn->dn_phys;
+        zbookmark_phys_t czb;
+
+        (void) seq_printf(seq, "\nIndirect blocks:\n");
+
+        SET_BOOKMARK(&czb, dmu_objset_id(dn->dn_objset),
+            dn->dn_object, dnp->dn_nlevels - 1, 0);
+        for (int j = 0; j < dnp->dn_nblkptr; j++) {
+        	seq_printf(seq, "\n Bees. set:object %lld:%lld, iter %d\n", dmu_objset_id(dn->dn_objset), dn->dn_object, j);
+                czb.zb_blkid = j;
+                (void) visit_indirect(seq, dmu_objset_spa(dn->dn_objset), dnp,
+                    &dnp->dn_blkptr[j], &czb);
+        }
+
+        (void) seq_printf(seq, "\n");
+}
+
+
+static int print_header(struct seq_file *seq, struct zdb_data *mydata, dmu_object_info_t *doi) {
+	seq_printf(seq, "\n%10s  %3s  %5s  %5s  %5s  %6s  %5s  %6s  %s\n",
+                    "Object", "lvl", "iblk", "dblk", "dsize", "dnsize",
+                    "lsize", "%full", "type");
+        char iblk[32], dblk[32], lsize[32], asize[32], fill[32], dnsize[32];
+        char bonus_size[32];
+        char aux[50];
+        aux[0] = '\0';
+
+        nicenum(doi->doi_metadata_block_size, iblk, sizeof (iblk));
+        nicenum(doi->doi_data_block_size, dblk, sizeof (dblk));
+        nicenum(doi->doi_max_offset, lsize, sizeof (lsize));
+        nicenum(doi->doi_physical_blocks_512 << 9, asize, sizeof (asize));
+        nicenum(doi->doi_bonus_size, bonus_size, sizeof (bonus_size));
+        nicenum(doi->doi_dnodesize, dnsize, sizeof (dnsize));
+
+        (void) snprintf(fill, sizeof (fill), "%6lld", (1000000 *
+            doi->doi_fill_count * doi->doi_data_block_size) / (mydata->id == 0 ?
+            DNODES_PER_BLOCK : 1) / doi->doi_max_offset);
+        
+        seq_printf(seq, "%10lld  %3u  %5s  %5s  %5s  %6s  %5s  %6s  %s%s\n",
+            (u_longlong_t)mydata->id, doi->doi_indirection, iblk, dblk,
+            asize, dnsize, lsize, fill, zdb_ot_name(doi->doi_type), aux);
+
+
+	return (0);
+}
+
+static int print_recs(struct seq_file *seq, struct zdb_data *mydata, dnode_t *dn) {
+	dump_indirect(seq,dn);
+	return (0);
+}
+
+static int zpl_zdbobj_show(struct seq_file *seq, void *v) {
+	seq_printf(seq, "\nWhat on earth\n");
+	struct zdb_data *mydata = seq->private;
+	uint64_t object = ZFSCTL_INO_ZDBDIR - mydata->inp->i_ino;
+	// what on earth
+	mydata->id = object;
+	int error = 0;
+	dmu_object_info_t doi = {0};
+	zfsvfs_t *zfsvfs = ITOZSB(mydata->inp);
+	dmu_buf_t *db = NULL;
+	dnode_t *dn = NULL;
+	fstrans_cookie_t cookie = spl_fstrans_mark();
+	if ((error = zpl_enter(zfsvfs, FTAG)) != 0) {
+		seq_printf(seq, "What. %d", error);
+		zfs_dbgmsg("\nWhat. %d\n", error);
+		goto out2;
+	}
+	dsl_pool_config_enter(dmu_objset_pool(zfsvfs->z_os), FTAG);
+	error = dmu_object_info(zfsvfs->z_os, object, &doi);
+	zfs_dbgmsg("\nWhat %d %lld %lld %lld\n", error, dmu_objset_id(zfsvfs->z_os), mydata->id, mydata->orig_id);
+	if (error) {
+		zfs_dbgmsg("\nWhat %d %lld %lld %lld\n", error, dmu_objset_id(zfsvfs->z_os), mydata->id, mydata->orig_id);
+		goto out;
+	}
+
+	error = dmu_bonus_hold(zfsvfs->z_os, object, FTAG, &db);	
+	if (error) {
+		zfs_dbgmsg("\nWhat %d\n", error);
+		goto out;
+	}
+	dn = DB_DNODE((dmu_buf_impl_t *)db);
+	
+//	seq_printf(seq, "Double bees\n");
+//	seq_printf(seq, "os %lld id %lld %px", (u_longlong_t)32, (u_longlong_t)128, v);
+//	seq_printf(seq, "os %lld id %lld", mydata->os, mydata->id);
+//	seq_printf(seq, "os %lld id %lld");
+	print_header(seq, mydata, &doi);
+//	print_meta(seq, mydata);
+	print_recs(seq, mydata, dn);
+out3:
+        if (db != NULL)
+                dmu_buf_rele(db, FTAG);
+out:
+	dsl_pool_config_exit(dmu_objset_pool(zfsvfs->z_os), FTAG);
+	zpl_exit(zfsvfs, FTAG);
+out2:
+	spl_fstrans_unmark(cookie);
+	vmem_free(mydata, sizeof(struct zdb_data));
+
+	return (error);
+}
+
+static int zpl_zdb_show(struct seq_file *seq, void *v)
+{
+//	seq_printf(seq, "bees bees bees %px\n", v);
+	return (zpl_zdbobj_show(seq,v));
+	
+}
+
+static int zpl_fops_zdb_open(struct inode *inode, struct file *file)
+{
+	zfs_dbgmsg("We got in here");
+	struct zdb_data *mydata = vmem_alloc(sizeof(struct zdb_data), KM_SLEEP);
+	memset(mydata, 0, sizeof(struct zdb_data));
+	
+//	printk(KERN_INFO "inode %px file %px mydata %px", inode, file, mydata);
+	
+	mydata->os = dmu_objset_id(ITOZSB(inode)->z_os);
+//	mydata->id = ZFSCTL_INO_ZDBDIR - inode->i_ino;
+	mydata->orig_id = inode->i_ino;
+	zfs_dbgmsg("Data1 data2 data3 data4 (%lld,%lld,%lld,%lld)",(ZFSCTL_INO_ZDBDIR - inode->i_ino), inode->i_ino, mydata->id, mydata->orig_id);
+	mydata->inp = inode;
+	return single_open(file, zpl_zdb_show,
+	    (void *)mydata);
+}
+
+const struct file_operations zpl_fops_zdb_file = {
+	.open		= zpl_fops_zdb_open,
+#ifdef HAVE_SEQ_READ_ITER
+	.read_iter	= seq_read_iter,
+#endif
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+const struct inode_operations zpl_ops_zdb_file = {};
+
+int
+zfsctl_zdbdir_lookup(struct inode *dip, const char *name, struct inode **ipp,
+    int flags, cred_t *cr, int *direntflags, pathname_t *realpnp)
+{
+	zfsvfs_t *zfsvfs = ITOZSB(dip);
+	uint64_t id;
+	int error;
+
+	if ((error = zfs_enter(zfsvfs, FTAG)) != 0) {
+		zfs_dbgmsg("Error %d", error);
+		return (error);
+	}
+
+	error = sscanf(name, "%lld", &id);
+	zfs_dbgmsg("id %lld name %s error %d", id, name, error);
+	
+	if (error == 1)
+		error = 0;
+	
+	if (error != 0) {
+		zfs_exit(zfsvfs, FTAG);
+		return (error);
+	}
+
+	*ipp = zfsctl_inode_lookup(zfsvfs, ZFSCTL_INO_ZDBDIR - id,
+	    &zpl_fops_zdb_file, &zpl_ops_zdb_file);
+	if (*ipp == NULL) {
+		zfs_dbgmsg("Error on inode lookup %d, somehow", id);
+		error = SET_ERROR(ENOENT);
+	}
+	else
+		(*ipp)->i_mode = (S_IFREG|S_IRUGO);
 
 	zfs_exit(zfsvfs, FTAG);
 
@@ -1235,7 +1612,7 @@ zfsctl_snapdir_vget(struct super_block *sb, uint64_t objsetid, int gen,
 	 * path because it contains the root of the snapshot rather
 	 * than the snapdir.
 	 */
-	*ipp = ilookup(sb, ZFSCTL_INO_SNAPDIRS - objsetid);
+	*ipp = ilookup(sb, ZFSCTL_INO_SNAPDIR - objsetid);
 	if (*ipp == NULL) {
 		error = SET_ERROR(ENOENT);
 		goto out;
@@ -1315,3 +1692,6 @@ MODULE_PARM_DESC(zfs_admin_snapshot, "Enable mkdir/rmdir/mv in .zfs/snapshot");
 
 module_param(zfs_expire_snapshot, int, 0644);
 MODULE_PARM_DESC(zfs_expire_snapshot, "Seconds to expire .zfs/snapshot");
+
+module_param(zfs_zdbdir_visible, int, 0644);
+MODULE_PARM_DESC(zfs_zdbdir_visible, "Does .zfs/zdb exist");

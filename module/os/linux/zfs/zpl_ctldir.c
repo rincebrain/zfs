@@ -36,6 +36,8 @@
 #include <sys/dsl_dataset.h>
 #include <sys/zap.h>
 
+int zfs_zdbdir_visible = 1;
+
 /*
  * Common open routine.  Disallow any write access.
  */
@@ -47,6 +49,8 @@ zpl_common_open(struct inode *ip, struct file *filp)
 
 	return (generic_file_open(ip, filp));
 }
+
+
 
 /*
  * Get root directory contents.
@@ -60,23 +64,39 @@ zpl_root_iterate(struct file *filp, zpl_dir_context_t *ctx)
 	if ((error = zpl_enter(zfsvfs, FTAG)) != 0)
 		return (error);
 
-	if (!zpl_dir_emit_dots(filp, ctx))
+	if (!zpl_dir_emit_dots(filp, ctx)) {
+		error = SET_ERROR(-EIO);
 		goto out;
+	}
 
 	if (ctx->pos == 2) {
 		if (!zpl_dir_emit(ctx, ZFS_SNAPDIR_NAME,
-		    strlen(ZFS_SNAPDIR_NAME), ZFSCTL_INO_SNAPDIR, DT_DIR))
+		    strlen(ZFS_SNAPDIR_NAME), ZFSCTL_INO_SNAPDIR, DT_DIR)) {
+			error = SET_ERROR(-EIO);
 			goto out;
+		}
 
 		ctx->pos++;
 	}
 
 	if (ctx->pos == 3) {
 		if (!zpl_dir_emit(ctx, ZFS_SHAREDIR_NAME,
-		    strlen(ZFS_SHAREDIR_NAME), ZFSCTL_INO_SHARES, DT_DIR))
+		    strlen(ZFS_SHAREDIR_NAME), ZFSCTL_INO_SHARES, DT_DIR)) {
+			error = SET_ERROR(-EIO);
 			goto out;
+		}
 
 		ctx->pos++;
+	}
+	if (ctx->pos == 4) {
+		if (zfs_zdbdir_visible) {
+			if (!zpl_dir_emit(ctx, ZFS_ZDBDIR_NAME,
+			    strlen(ZFS_ZDBDIR_NAME), ZFSCTL_INO_ZDBDIROBJ, DT_DIR)) {
+				error = SET_ERROR(-EIO);
+				goto out;
+			}
+			ctx->pos++;
+		}
 	}
 out:
 	zpl_exit(zfsvfs, FTAG);
@@ -671,3 +691,201 @@ const struct inode_operations zpl_ops_shares = {
 	.lookup		= zpl_shares_lookup,
 	.getattr	= zpl_shares_getattr,
 };
+
+
+static struct dentry *
+zpl_zdb_lookup(struct inode *dip, struct dentry *dentry,
+    unsigned int flags)
+{
+	zfs_dbgmsg("I'm in.");
+	if (!zfs_zdbdir_visible)
+		return (ERR_PTR(-EACCES));
+
+	fstrans_cookie_t cookie;
+	cred_t *cr = CRED();
+	struct inode *ip = NULL;
+	int error;
+
+	crhold(cr);
+	cookie = spl_fstrans_mark();
+	error = -zfsctl_zdbdir_lookup(dip, dname(dentry), &ip,
+	    0, cr, NULL, NULL);
+	ASSERT3S(error, <=, 0);
+	spl_fstrans_unmark(cookie);
+	crfree(cr);
+
+	if (error && error != -ENOENT)
+		return (ERR_PTR(error));
+
+	ASSERT(error == 0 || ip == NULL);
+//	d_clear_d_op(dentry);
+//	d_set_d_op(dentry, &zpl_dops_zdbobjs);
+//	dentry->d_flags |= DCACHE_NEED_AUTOMOUNT;
+
+	return (d_splice_alias(ip, dentry));
+}
+
+static int
+zpl_zdb_iterate(struct file *filp, zpl_dir_context_t *ctx)
+{
+	if (!zfs_zdbdir_visible)
+		return (-EACCES);
+
+	zfsvfs_t *zfsvfs = ITOZSB(file_inode(filp));
+	uint64_t object = 0;
+	dmu_objset_stats_t dds = { 0 };
+	dmu_object_info_t doi = {0};
+	fstrans_cookie_t cookie;
+	char objid[128];
+	boolean_t case_conflict;
+	uint64_t id, pos;
+	int error = 0;
+
+
+	if ((error = zpl_enter(zfsvfs, FTAG)) != 0)
+		return (error);
+	cookie = spl_fstrans_mark();
+
+	if (!zpl_dir_emit_dots(filp, ctx))
+		goto out;
+
+	zfs_dbgmsg("I'm in.");
+	
+	dsl_pool_config_enter(dmu_objset_pool(zfsvfs->z_os), FTAG);
+	dmu_objset_fast_stat(zfsvfs->z_os, &dds);
+	dsl_pool_config_exit(dmu_objset_pool(zfsvfs->z_os), FTAG);
+
+//	dmu_object_next(os, &object, B_FALSE, 0);
+
+	/* Start the position at 0 if it already emitted . and .. */
+	object = (ctx->pos == 2 ? 0 : ctx->pos);
+	dsl_pool_config_enter(dmu_objset_pool(zfsvfs->z_os), FTAG);
+	while (error == 0) {
+		zfs_dbgmsg("while loop, let's go. %lld %lld %d, osid %lld", object, ctx->pos, error, dmu_objset_id(zfsvfs->z_os));
+		zfs_dbgmsg("types %d %d", DMU_OT_PLAIN_FILE_CONTENTS, DMU_OT_DIRECTORY_CONTENTS);
+		error = -dmu_object_next(zfsvfs->z_os, &object, B_FALSE, 0);
+
+		if (error) {
+			zfs_dbgmsg("object_next error %d", error);
+			goto out;
+		}
+		if (object == 0) {
+			continue;
+		}
+
+		error = -dmu_object_info(zfsvfs->z_os, object, &doi);
+
+		if (error != 0) {
+			goto out;
+		}
+
+		zfs_dbgmsg("DBG object %lld type %lld", object, doi.doi_type);
+
+		if (doi.doi_type != DMU_OT_PLAIN_FILE_CONTENTS && doi.doi_type != DMU_OT_DIRECTORY_CONTENTS) {
+			continue;
+		}
+		
+		snprintf(objid, 128, "%lld", object);
+		
+		if (!zpl_dir_emit(ctx, objid, strlen(objid),
+		    object, DT_REG)) {
+		    	zfs_dbgmsg("Oh no.");
+		    	error = -EACCES;
+ 			goto out;
+		}
+
+		ctx->pos = object;
+	}
+out:
+	zfs_dbgmsg("Out %lld %lld %d", object, ctx->pos, error);
+	dsl_pool_config_exit(dmu_objset_pool(zfsvfs->z_os), FTAG);
+	spl_fstrans_unmark(cookie);
+	zpl_exit(zfsvfs, FTAG);
+
+	if (error == -ENOENT || error == -ESRCH)
+		return (0);
+	
+
+	return (SET_ERROR(error));
+}
+
+static int
+zpl_zdb_readdir(struct file *filp, void *dirent, filldir_t filldir)
+{
+	if (!zfs_zdbdir_visible)
+		return (-EACCES);
+
+	zpl_dir_context_t ctx =
+	    ZPL_DIR_CONTEXT_INIT(dirent, filldir, filp->f_pos);
+	int error;
+
+	error = zpl_zdb_iterate(filp, &ctx);
+	filp->f_pos = ctx.pos;
+
+	return (error);
+
+}
+
+
+/*
+ * The '.zfs/shares' directory file operations.
+ */
+const struct file_operations zpl_fops_zdbdir = {
+	.open		= zpl_common_open,
+	.llseek		= generic_file_llseek,
+	.read		= generic_read_dir,
+#ifdef HAVE_VFS_ITERATE_SHARED
+	.iterate_shared	= zpl_zdb_iterate,
+#elif defined(HAVE_VFS_ITERATE)
+	.iterate	= zpl_zdb_iterate,
+#else
+	.readdir	= zpl_zdb_readdir,
+#endif
+
+};
+
+static int
+#ifdef HAVE_IDMAP_IOPS_GETATTR
+zpl_zdb_getattr_impl(struct mnt_idmap *user_ns,
+    const struct path *path, struct kstat *stat, u32 request_mask,
+    unsigned int query_flags)
+#elif defined(HAVE_USERNS_IOPS_GETATTR)
+zpl_zdb_getattr_impl(struct user_namespace *user_ns,
+    const struct path *path, struct kstat *stat, u32 request_mask,
+    unsigned int query_flags)
+#else
+zpl_zdb_getattr_impl(const struct path *path, struct kstat *stat,
+    u32 request_mask, unsigned int query_flags)
+#endif
+{
+	(void) request_mask, (void) query_flags;
+	struct inode *ip = path->dentry->d_inode;
+
+#if (defined(HAVE_USERNS_IOPS_GETATTR) || defined(HAVE_IDMAP_IOPS_GETATTR))
+#ifdef HAVE_GENERIC_FILLATTR_USERNS
+	generic_fillattr(user_ns, ip, stat);
+#elif defined(HAVE_GENERIC_FILLATTR_IDMAP)
+	generic_fillattr(user_ns, ip, stat);
+#elif defined(HAVE_GENERIC_FILLATTR_IDMAP_REQMASK)
+	generic_fillattr(user_ns, request_mask, ip, stat);
+#else
+	(void) user_ns;
+#endif
+#else
+	generic_fillattr(ip, stat);
+#endif
+	stat->atime = current_time(ip);
+
+	return (0);
+}
+ZPL_GETATTR_WRAPPER(zpl_zdb_getattr);
+
+
+/*
+ * The '.zfs/shares' directory inode operations.
+ */
+const struct inode_operations zpl_ops_zdbdir = {
+	.lookup		= zpl_zdb_lookup,
+	.getattr	= zpl_zdb_getattr,
+};
+
