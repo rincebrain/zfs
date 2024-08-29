@@ -58,6 +58,7 @@
 #include <sys/dsl_dir.h>
 #include <sys/objlist.h>
 #include <sys/zpl.h>
+#include <sys/simd.h>
 #include <linux/vfs_compat.h>
 #include "zfs_comutil.h"
 
@@ -2090,6 +2091,13 @@ zfsvfs_update_fromname(const char *oldname, const char *newname)
 	(void) oldname, (void) newname;
 }
 
+#define zfs_sha256_available() (0)
+#define zfs_sha512_available() (0)
+#define zfs_altivec_available() (0)
+#define zfs_neon_available() (0)
+#define zfs_vsx_available() (0)
+#define zfs_isa207_available() (0)
+
 void
 zfs_init(void)
 {
@@ -2100,6 +2108,77 @@ zfs_init(void)
 #ifdef HAVE_VFS_FILE_OPERATIONS_EXTEND
 	register_fo_extend(&zpl_file_operations);
 #endif
+
+	printk(KERN_INFO "SIMD debug: "
+"sse: %d "
+"sse2: %d "
+"sse3: %d "
+"ssse3: %d "
+"sse41: %d "
+"sse42: %d "
+"avx: %d "
+"avx2: %d "
+"bmi1: %d "
+"bmi2: %d "
+"aes: %d "
+"pclmulqdq: %d "
+"movbe: %d "
+"shani: %d "
+"avx512f: %d "
+"avx512cd: %d "
+"avx512er: %d "
+"avx512pf: %d "
+"avx512bw: %d "
+"avx512dq: %d "
+"avx512vl: %d "
+"avx512ifma: %d "
+"avx512vbmi: %d "
+"neon: %d "
+"sha256: %d "
+"sha512: %d "
+"altivec: %d "
+"vsx: %d "
+"isa207: %d "
+"xsaves: %d "
+"xsaveopt: %d "
+"xsave: %d "
+"fxsr: %d "
+"\n",
+zfs_sse_available(),
+zfs_sse2_available(),
+zfs_sse3_available(),
+zfs_ssse3_available(),
+zfs_sse4_1_available(),
+zfs_sse4_2_available(),
+zfs_avx_available(),
+zfs_avx2_available(),
+zfs_bmi1_available(),
+zfs_bmi2_available(),
+zfs_aes_available(),
+zfs_pclmulqdq_available(),
+zfs_movbe_available(),
+zfs_shani_available(),
+zfs_avx512f_available(),
+zfs_avx512cd_available(),
+zfs_avx512er_available(),
+zfs_avx512pf_available(),
+zfs_avx512bw_available(),
+zfs_avx512dq_available(),
+zfs_avx512vl_available(),
+zfs_avx512ifma_available(),
+zfs_avx512vbmi_available(),
+zfs_neon_available(),
+zfs_sha256_available(),
+zfs_sha512_available(),
+zfs_altivec_available(),
+zfs_vsx_available(),
+zfs_isa207_available(),
+static_cpu_has(X86_FEATURE_XSAVES),
+static_cpu_has(X86_FEATURE_XSAVEOPT),
+static_cpu_has(X86_FEATURE_XSAVE),
+static_cpu_has(X86_FEATURE_FXSR)
+		);
+
 }
 
 void
