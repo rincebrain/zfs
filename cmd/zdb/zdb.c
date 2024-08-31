@@ -3767,15 +3767,18 @@ dump_object(objset_t *os, uint64_t object, int verbosity,
 
 		if (!key_loaded && os->os_encrypted &&
 		    DMU_OT_IS_ENCRYPTED(doi.doi_bonus_type)) {
+bad_idea:
 			error = dnode_hold(os, object, FTAG, &dn);
 			if (error)
 				fatal("dnode_hold() failed, errno %u", error);
 			dnode_held = B_TRUE;
 		} else {
 			error = dmu_bonus_hold(os, object, FTAG, &db);
-			if (error)
-				fatal("dmu_bonus_hold(%llu) failed, errno %u",
-				    object, error);
+			if (error) {
+				goto bad_idea;
+				//fatal("dmu_bonus_hold(%llu) failed, errno %u",
+				//    object, error);
+			}
 			bonus = db->db_data;
 			bsize = db->db_size;
 			dn = DB_DNODE((dmu_buf_impl_t *)db);
