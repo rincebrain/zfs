@@ -692,6 +692,7 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, const void *tag,
 	/* Lookup the wrapping key from the keystore */
 	ret = spa_keystore_wkey_hold_dd(spa, dd, FTAG, &wkey);
 	if (ret != 0) {
+		dsl_wrapping_key_rele(wkey, FTAG);
 		char dbg[ZFS_MAX_DATASET_NAME_LEN+1];
 		dsl_dir_name(dd,dbg);
 		zfs_dbgmsg("Looking up the wrapping key for %s returned %d", dbg, ret);
