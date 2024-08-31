@@ -692,9 +692,28 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, const void *tag,
 	/* Lookup the wrapping key from the keystore */
 	ret = spa_keystore_wkey_hold_dd(spa, dd, FTAG, &wkey);
 	if (ret != 0) {
+		char dbg[ZFS_MAX_DATASET_NAME_LEN+1];
+		dsl_dir_name(dd,dbg);
+		zfs_dbgmsg("Looking up the wrapping key for %s returned %d", dbg, ret);
 		*dck_out = NULL;
+		// horrible bruteforce search fallback
+		dsl_wrapping_key_t *pos = avl_first(&spa->spa_keystore.sk_wkeys);
+		while (pos != NULL) {
+			dsl_wrapping_key_hold(pos, FTAG);
+			ret = dsl_crypto_key_open(spa->spa_meta_objset, pos, dckobj,
+				tag, &dck_io);
+			if (ret == 0) {
+				wkey = pos;
+				pos = NULL;
+				//dckobj = pos->dck_obj;
+				zfs_dbgmsg("Key %llx worked!", (u_longlong_t) pos->wk_ddobj);
+				goto more;
+			}
+			dsl_wrapping_key_rele(pos, FTAG);
+			pos = AVL_NEXT(&spa->spa_keystore.sk_wkeys,pos);
+		}
 		return (SET_ERROR(EACCES));
-	}
+	} else { 
 
 	/* Read the key from disk */
 	ret = dsl_crypto_key_open(spa->spa_meta_objset, wkey, dckobj,
@@ -704,7 +723,8 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, const void *tag,
 		*dck_out = NULL;
 		return (ret);
 	}
-
+	}
+more:
 	/*
 	 * Add the key to the keystore.  It may already exist if it was
 	 * added while performing the read from disk.  In this case discard
