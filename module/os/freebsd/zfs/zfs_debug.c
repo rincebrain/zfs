@@ -232,16 +232,23 @@ __dprintf(boolean_t dprint, const char *file, const char *func,
 #else
 
 void
-zfs_dbgmsg_print(const char *tag)
+zfs_dbgmsg_print2(const char *tag, boolean_t toerr)
 {
 	zfs_dbgmsg_t *zdm;
+	
+	FILE* outfi = (toerr ? stderr : stdout);
 
-	(void) printf("ZFS_DBGMSG(%s):\n", tag);
+	(void) fprintf(outfi, "ZFS_DBGMSG(%s):\n", tag);
 	mutex_enter(&zfs_dbgmsgs_lock);
 	for (zdm = list_head(&zfs_dbgmsgs); zdm;
 	    zdm = list_next(&zfs_dbgmsgs, zdm))
-		(void) printf("%s\n", zdm->zdm_msg);
+		(void) fprintf(outfi, "%s\n", zdm->zdm_msg);
 	mutex_exit(&zfs_dbgmsgs_lock);
+}
+void
+zfs_dbgmsg_print(const char *tag)
+{
+	zfs_dbgmsg_print2(tag, B_FALSE);
 }
 #endif /* _KERNEL */
 

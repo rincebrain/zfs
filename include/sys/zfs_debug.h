@@ -103,6 +103,7 @@ extern void zfs_dbgmsg_fini(void);
 
 #ifndef _KERNEL
 extern int dprintf_find_string(const char *string);
+extern void zfs_dbgmsg_print2(const char *tag, boolean_t toerr);
 extern void zfs_dbgmsg_print(const char *tag);
 #endif
 

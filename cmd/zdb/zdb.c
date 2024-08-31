@@ -938,14 +938,19 @@ dump_debug_buffer(void)
 {
 	ssize_t ret __attribute__((unused));
 
+	int toerr = 0;
+
 	if (!dump_opt['G'])
 		return;
+	
+	if (dump_opt['B'])
+		toerr = 1;
 	/*
 	 * We use write() instead of printf() so that this function
 	 * is safe to call from a signal handler.
 	 */
-	ret = write(STDOUT_FILENO, "\n", 1);
-	zfs_dbgmsg_print("zdb");
+	ret = write((toerr ? STDERR_FILENO : STDOUT_FILENO), "\n", 1);
+	zfs_dbgmsg_print2("zdb", toerr);
 }
 
 #define	BACKTRACE_SZ	100

@@ -219,32 +219,39 @@ __dprintf(boolean_t dprint, const char *file, const char *func,
 
 #else
 
+
 void
-zfs_dbgmsg_print(const char *tag)
+zfs_dbgmsg_print2(const char *tag, boolean_t toerr)
 {
 	ssize_t ret __attribute__((unused));
+
+	int outfd = (toerr ? STDERR_FILENO : STDOUT_FILENO);
 
 	/*
 	 * We use write() in this function instead of printf()
 	 * so it is safe to call from a signal handler.
 	 */
-	ret = write(STDOUT_FILENO, "ZFS_DBGMSG(", 11);
-	ret = write(STDOUT_FILENO, tag, strlen(tag));
-	ret = write(STDOUT_FILENO, ") START:\n", 9);
+	ret = write(outfd, "ZFS_DBGMSG(", 11);
+	ret = write(outfd, tag, strlen(tag));
+	ret = write(outfd, ") START:\n", 9);
 
 	mutex_enter(&zfs_dbgmsgs.pl_lock);
 	for (zfs_dbgmsg_t *zdm = list_head(&zfs_dbgmsgs.pl_list); zdm != NULL;
 	    zdm = list_next(&zfs_dbgmsgs.pl_list, zdm)) {
-		ret = write(STDOUT_FILENO, zdm->zdm_msg,
+		ret = write(outfd, zdm->zdm_msg,
 		    strlen(zdm->zdm_msg));
-		ret = write(STDOUT_FILENO, "\n", 1);
+		ret = write(outfd, "\n", 1);
 	}
 
-	ret = write(STDOUT_FILENO, "ZFS_DBGMSG(", 11);
-	ret = write(STDOUT_FILENO, tag, strlen(tag));
-	ret = write(STDOUT_FILENO, ") END\n", 6);
+	ret = write(outfd, "ZFS_DBGMSG(", 11);
+	ret = write(outfd, tag, strlen(tag));
+	ret = write(outfd, ") END\n", 6);
 
 	mutex_exit(&zfs_dbgmsgs.pl_lock);
+}
+void
+zfs_dbgmsg_print(const char *tag) {
+	zfs_dbgmsg_print2(tag, B_FALSE);
 }
 #endif /* _KERNEL */
 
