@@ -94,6 +94,12 @@
 
 #include "zdb.h"
 
+/* These are so you can use zdb -o to override them at runtime.
+   They're unused otherwise, but they're not useless, so please
+   don't remove. */
+extern int zfs_flags;
+
+
 #define	ZDB_COMPRESS_NAME(idx) ((idx) < ZIO_COMPRESS_FUNCTIONS ?	\
 	zio_compress_table[(idx)].ci_name : "UNKNOWN")
 #define	ZDB_CHECKSUM_NAME(idx) ((idx) < ZIO_CHECKSUM_FUNCTIONS ?	\
