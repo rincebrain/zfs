@@ -713,6 +713,7 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, const void *tag,
 			dsl_wrapping_key_rele(pos, FTAG);
 			pos = AVL_NEXT(&spa->spa_keystore.sk_wkeys,pos);
 		}
+		*dck_out = NULL;
 		return (SET_ERROR(EACCES));
 	} else { 
 
